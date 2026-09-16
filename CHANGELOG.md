@@ -1,5 +1,12 @@
 # `activerecord-tenanted` Changelog
 
+## next / unreleased
+
+### Added
+
+- `db:seed:DBNAME` loads the seed data into each tenanted database, or into the tenant named by `ARTENANT` when that variable is set. `db:reset:DBNAME` now runs it after the tenant databases are migrated, so the tenanted task matches the Rails `db:reset` task, which also loads the seeds. @jamesridgway
+
+
 ## v0.8.0 / 2026-08-04
 
 ### Breaking change: serialized payloads carry the tenant
