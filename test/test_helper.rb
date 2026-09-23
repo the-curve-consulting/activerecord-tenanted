@@ -34,9 +34,51 @@ require "active_storage"
 require "active_storage/service/disk_service"
 ActiveStorage::Service::DiskService.prepend ActiveRecord::Tenanted::Storage::DiskService
 
+#  A parallel worker sends its results to the parent process with Marshal. An ActiveRecord error
+#  can hold the connection pool that it came from, a pool holds a Monitor, and a Monitor cannot be
+#  marshalled. The worker then dies with "no _dump_data is defined for class Monitor", and every
+#  failure that it found is lost: the run reports the crash of the worker instead of the failures,
+#  and the failures have to be found again with a serial run.
+#
+#  A failure that cannot be sent is replaced here with one that can. The replacement carries the
+#  class name, the message and the backtrace of the original, which is what a person reading the
+#  output needs.
+#
+#  This is invisible with SQLite, where an error rarely holds a pool.
+module ParallelForkMarshalSafely
+  class << self
+    def marshalable(result)
+      Marshal.dump(result)
+      result
+    rescue TypeError
+      result.failures.map! { |failure| marshalable_failure(failure) }
+      result
+    end
+
+    def marshalable_failure(failure)
+      Marshal.dump(failure)
+      failure
+    rescue TypeError
+      error = failure.respond_to?(:error) ? failure.error : failure
+      replacement = RuntimeError.new("#{error.class}: #{error.message}")
+      replacement.set_backtrace(error.backtrace)
+
+      Minitest::UnexpectedError.new(replacement)
+    end
+  end
+
+  def parallel_fork_data_to_marshal
+    count, assertions, results = super
+
+    [ count, assertions, Array(results).map { |result| ParallelForkMarshalSafely.marshalable(result) } ]
+  end
+end
+
 if ENV["NCPU"].to_i > 1
   require "minitest/parallel_fork"
   warn "Running parallel tests with NCPU=#{ENV["NCPU"].inspect}"
+
+  Minitest.singleton_class.prepend(ParallelForkMarshalSafely)
 end
 
 module ActiveRecord
