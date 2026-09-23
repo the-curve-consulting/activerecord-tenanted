@@ -5,9 +5,9 @@ test:
   primary:
     tenanted: true
     adapter: "sqlite3"
-    database: "%{storage}/test/%{prefix}/primary/%%{tenant}/main.sqlite3"
+    database: "%{storage}/%{env}/%{prefix}/primary/%%{tenant}/main.sqlite3"
     migrations_paths: "%{db_path}/tenanted_migrations"
   shared:
     adapter: "sqlite3"
-    database: "%{storage}/test/%{prefix}/shared.sqlite3"
+    database: "%{storage}/%{env}/%{prefix}/shared.sqlite3"
     migrations_paths: "%{db_path}/shared_migrations"

@@ -19,7 +19,7 @@ require "tmpdir"
 require "yaml"
 require "open3"
 require "active_support"
-require "active_support/core_ext/object" # deep_dup
+require "active_support/core_ext/object" # presence
 
 # The scenarios run against SQLite, unless ARTENANT_ADAPTERS names other adapters as a comma
 # separated list. A scenario belongs to the adapter of its tenanted database.
@@ -78,18 +78,24 @@ def run_scenario(scenario)
   # make a copy of the smarty app
   FileUtils.copy_entry(SMARTY_PATH, app_path)
 
-  # generate database file
+  # Generate the database file. The scenario template is read once for each environment, with the
+  # name of the environment in %{env}, so that the two environments never name the same database.
+  # A SQLite scenario puts the environment in the path, and a server scenario puts it in the
+  # database name.
   database_file = File.join(GEM_PATH, "test/scenarios/#{scenario[:database]}/database.yml")
-  database_file_contents = sprintf(File.read(database_file),
-                                   storage: "storage", db_path: "db",
-                                   prefix: "#{RUN_ID}#{SecureRandom.hex(2)}",
-                                   mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306),
-                                   postgres_port: ENV.fetch("ARTENANT_POSTGRES_PORT", 15432))
-  database_file_hash = YAML.load(database_file_contents)
-  database_file_hash["development"] = database_file_hash["test"].deep_dup
-  database_file_hash["development"].each_value do |hash|
-    hash["database"] = hash["database"].sub("/test/", "/development/")
+  database_template = File.read(database_file)
+  database_prefix = "#{RUN_ID}#{SecureRandom.hex(2)}"
+
+  database_file_hash = %w[test development].each_with_object({}) do |env, result|
+    contents = sprintf(database_template,
+                       storage: "storage", db_path: "db",
+                       prefix: database_prefix, env: env,
+                       mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306),
+                       postgres_port: ENV.fetch("ARTENANT_POSTGRES_PORT", 15432))
+
+    result[env] = YAML.load(contents).fetch("test")
   end
+
   File.write(File.join(app_path, "config/database.yml"), database_file_hash.to_yaml)
 
   # generate models using ApplicationRecord

@@ -2,7 +2,9 @@ require "application_system_test_case"
 
 class TestTurboBroadcast < ApplicationSystemTestCase
   test "broadcast does not cross the streams" do
-    tenant2 = __method__
+    # The name is short and is not taken from __method__, because it becomes part of a database
+    # name, and PostgreSQL allows a database name of only 63 bytes.
+    tenant2 = "broadcast-two"
 
     note1 = Note.create!(title: "Tenant-1", body: "note 1 version 1")
     note2 = ApplicationRecord.create_tenant(tenant2) do

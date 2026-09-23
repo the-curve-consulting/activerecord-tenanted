@@ -147,6 +147,7 @@ module ActiveRecord
             let(:db_config_yml) do
               sprintf(File.read(db_config_path),
                       storage: storage_path, db_path: db_path, prefix: self.class.database_prefix,
+                      env: "test",
                       mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306),
                       postgres_port: ENV.fetch("ARTENANT_POSTGRES_PORT", 15432))
             end

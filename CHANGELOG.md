@@ -33,6 +33,7 @@ An existing database whose directory name is no longer valid is skipped by `tena
 
 ### Developer infrastructure
 
+- The integration test suite builds the database configuration of its app once for each environment, from the same scenario template, with the name of the environment in a `%{env}` key. It built the development configuration before this by rewriting `/test/` to `/development/` in the database name, which is a path rewrite: it works for a SQLite database, and it does nothing for the name of a database on a server, so both environments would have used the same databases. @jamesridgway
 - `bin/setup` starts a MySQL server and a PostgreSQL server in containers, for the test scenarios that the MySQL and PostgreSQL adapters will need. The containers publish ports that are not the default ports of the servers, 13306 and 15432, so that they do not take a port from a server that the developer already runs. `ARTENANT_MYSQL_PORT` and `ARTENANT_POSTGRES_PORT` select other ports. @jamesridgway
 - Added `mysql2`, `pg` and `trilogy` as development dependencies. @jamesridgway
 - The test scenarios name their databases with a prefix that belongs to the run and to the test process, through a `%{prefix}` key in the scenario `database.yml`. Two runs, and two parallel workers, therefore never use the same database on a server that they share. The teardown of a scenario drops the tenant databases through the adapter and the untenanted databases through Rails, so a run leaves nothing behind. @jamesridgway
