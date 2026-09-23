@@ -75,15 +75,40 @@ module ActiveRecord
           end
         end
 
+        # The scenarios run against SQLite, unless ARTENANT_ADAPTERS names other adapters as a
+        # comma separated list. A scenario belongs to the adapter of its tenanted database, so a
+        # scenario is added by adding a directory and not by changing this method.
+        def scenario_adapters
+          (ENV["ARTENANT_ADAPTERS"].presence || "sqlite3").split(",").map(&:strip)
+        end
+
+        def scenario_adapter(db_config_path)
+          YAML.load_file(db_config_path)
+            .fetch("test")
+            .each_value
+            .find { |db_config| db_config["tenanted"] }
+            &.fetch("adapter")
+        end
+
         def all_scenarios
-          Dir.glob(File.join(__dir__, "scenarios", "*", "database.yml"))
-            .each_with_object({}) do |db_config_path, scenarios|
+          adapters = scenario_adapters
+
+          scenarios = Dir.glob(File.join(__dir__, "scenarios", "*", "database.yml"))
+            .select { |db_config_path| adapters.include?(scenario_adapter(db_config_path)) }
+            .each_with_object({}) do |db_config_path, result|
             db_config_dir = File.dirname(db_config_path)
             db_scenario = File.basename(db_config_dir)
             model_files = Dir.glob(File.join(db_config_dir, "*.rb"))
 
-            scenarios[db_scenario] = model_files.map { File.basename(_1, ".*") }
+            result[db_scenario] = model_files.map { File.basename(_1, ".*") }
           end
+
+          if scenarios.empty?
+            raise "No test scenario uses an adapter in #{adapters.inspect}. " \
+                  "Check the ARTENANT_ADAPTERS environment variable."
+          end
+
+          scenarios
         end
 
         def with_db_scenario(db_scenario, &block)

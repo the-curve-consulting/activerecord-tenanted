@@ -63,7 +63,7 @@ jobs:
         run: echo "gemfiles=$(ruby -rjson -e 'puts Dir["gemfiles/*.gemfile"].map { |f| File.basename(f, ".gemfile") }.sort.to_json')" >> "$GITHUB_OUTPUT"
 
   unit:
-    name: "unit (${{ matrix.gemfile }})"
+    name: "unit (${{ matrix.gemfile }}, ${{ matrix.adapter }})"
     needs: rails_versions
     runs-on: ubuntu-latest
     permissions:
@@ -72,9 +72,11 @@ jobs:
       fail-fast: false
       matrix:
         gemfile: ${{ fromJSON(needs.rails_versions.outputs.gemfiles) }}
+        adapter: [sqlite3]
     continue-on-error: ${{ matrix.gemfile == 'rails_edge' }}
     env:
       BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
+      ARTENANT_ADAPTERS: ${{ matrix.adapter }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -86,7 +88,7 @@ jobs:
       - run: bin/test-unit
 
   integration:
-    name: "integration (${{ matrix.gemfile }})"
+    name: "integration (${{ matrix.gemfile }}, ${{ matrix.adapter }})"
     needs: rails_versions
     runs-on: ubuntu-latest
     permissions:
@@ -95,9 +97,11 @@ jobs:
       fail-fast: false
       matrix:
         gemfile: ${{ fromJSON(needs.rails_versions.outputs.gemfiles) }}
+        adapter: [sqlite3]
     continue-on-error: ${{ matrix.gemfile == 'rails_edge' }}
     env:
       BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
+      ARTENANT_ADAPTERS: ${{ matrix.adapter }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
