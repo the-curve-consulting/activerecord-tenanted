@@ -126,9 +126,15 @@ module ActiveRecord
         # scenario is added by adding a directory and not by changing this method.
         #
         # The variable selects the scenarios that for_each_scenario and for_each_db_scenario run.
-        # A test that names its scenario, with with_scenario, runs that scenario whatever the
-        # variable holds, because such a test covers behaviour that is not adapter specific and
-        # would otherwise not run at all.
+        #
+        # A test that names its scenario, with with_scenario, is treated by what the scenario
+        # needs. A SQLite scenario needs nothing, so it always runs: such a test usually covers
+        # behaviour that is not adapter specific, and it would otherwise not run at all. A
+        # scenario that names a server runs only when that server is asked for, because the
+        # server has to be there to run it.
+        # The only adapter that needs no server, so a scenario that uses it can always run.
+        SERVERLESS_ADAPTER = "sqlite3"
+
         def scenario_adapters
           (ENV["ARTENANT_ADAPTERS"].presence || "sqlite3").split(",").map(&:strip)
         end
@@ -179,6 +185,9 @@ module ActiveRecord
           db_config_path = File.join(__dir__, "scenarios", db_scenario.to_s, "database.yml")
           raise "Could not find scenario db config: #{db_config_path}" unless File.exist?(db_config_path)
 
+          adapter = scenario_adapter(db_config_path)
+          return unless adapter == SERVERLESS_ADAPTER || scenario_adapters.include?(adapter)
+
           describe "scenario::#{db_scenario}" do
             @db_config_dir = db_config_dir = File.dirname(db_config_path)
 
@@ -216,6 +225,13 @@ module ActiveRecord
             end
 
             teardown do
+              # The connections of the scenario are closed before its databases are dropped. A
+              # database server holds a connection open until it is closed, and PostgreSQL refuses
+              # to drop a database while a session is connected to it, so a drop that ran first
+              # would fail with PG::ObjectInUse. Closing them also keeps a run of the whole suite
+              # inside the number of connections that the server allows.
+              ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
+
               # A SQLite scenario loses its databases with the temporary directory below, but a
               # database server keeps them, so they are dropped while the configuration of the
               # scenario is still in place.
@@ -224,12 +240,6 @@ module ActiveRecord
               ActiveRecord::Migration.verbose = @migration_verbose_was
               ActiveRecord::Base.configurations = @old_configurations
               ActiveRecord::Tasks::DatabaseTasks.db_dir = @old_db_dir
-
-              # The connection handler of the scenario is dropped below. A database server holds a
-              # connection open until it is closed, so the connections are closed here rather than
-              # left to the garbage collector. Without this a run of the whole suite uses more
-              # connections than the server allows.
-              ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
               ActiveRecord::Base.connection_handler = ActiveRecord::Base.default_connection_handler = @old_connection_handler
               FileUtils.remove_entry ephemeral_path
             end
