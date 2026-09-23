@@ -78,6 +78,11 @@ module ActiveRecord
         # The scenarios run against SQLite, unless ARTENANT_ADAPTERS names other adapters as a
         # comma separated list. A scenario belongs to the adapter of its tenanted database, so a
         # scenario is added by adding a directory and not by changing this method.
+        #
+        # The variable selects the scenarios that for_each_scenario and for_each_db_scenario run.
+        # A test that names its scenario, with with_scenario, runs that scenario whatever the
+        # variable holds, because such a test covers behaviour that is not adapter specific and
+        # would otherwise not run at all.
         def scenario_adapters
           (ENV["ARTENANT_ADAPTERS"].presence || "sqlite3").split(",").map(&:strip)
         end

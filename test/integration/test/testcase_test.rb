@@ -10,7 +10,7 @@ class TestActiveSupportTestCase < ActiveSupport::TestCase
   end
 
   test "non-default tenants are cleaned up at the start of the test suite" do
-    # this file is created by bin/test-integration before running the suite
+    # this tenant is created by bin/test-integration before the suite runs
     assert_not_includes(ApplicationRecord.tenants, "delete-me")
   end
 

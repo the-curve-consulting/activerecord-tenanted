@@ -33,6 +33,8 @@ An existing database whose directory name is no longer valid is skipped by `tena
 
 - `bin/setup` starts a MySQL server and a PostgreSQL server in containers, for the test scenarios that the MySQL and PostgreSQL adapters will need. The containers publish ports that are not the default ports of the servers, 13306 and 15432, so that they do not take a port from a server that the developer already runs. `ARTENANT_MYSQL_PORT` and `ARTENANT_POSTGRES_PORT` select other ports. @jamesridgway
 - Added `mysql2`, `pg` and `trilogy` as development dependencies. @jamesridgway
+- The integration test suite makes its throwaway tenant with `bin/rails db:migrate ARTENANT=delete-me`, rather than by copying a SQLite file into place, and it checks that the tenant is there before the suite runs, so the test that looks for the tenant cannot pass for the wrong reason. @jamesridgway
+- The tests for a database that is not ready use the adapter contract, `acquire_ready_lock` and `create_database`, rather than the file based ready mutex, so they hold for any adapter. @jamesridgway
 - The test scenarios are selected by adapter. `ARTENANT_ADAPTERS` names the adapters as a comma separated list, and defaults to `sqlite3`, so a scenario for another adapter is added without being run by default. The CI matrix now has an adapter dimension, with SQLite as the only value for now. @jamesridgway
 
 ## v0.8.0 / 2026-08-04
