@@ -214,8 +214,16 @@ module ActiveRecord
         end
 
         def tenant_exist?(tenant_name)
+          tenant_name = tenant_name.to_s
           root_config = tenanted_root_config
-          return false unless root_config.config_adapter.valid_tenant_name?(tenant_name.to_s)
+          return false unless root_config.config_adapter.valid_tenant_name?(tenant_name)
+
+          # A connection pool for the tenant is proof that the database is there and is ready,
+          # because a pool is only made for a database that is migrated. The tenant selector calls
+          # this method on every request, so the database is asked only when there is no pool. For
+          # SQLite the question is a call to File.exist?, but a database server is connected to and
+          # queried, which is too much work for every request.
+          return true if tenant_connection_pool?(tenant_name)
 
           root_config.new_tenant_config(tenant_name).config_adapter.database_ready?
         end
@@ -246,7 +254,6 @@ module ActiveRecord
               adapter.create_database
 
               with_tenant(tenant_name) do
-                connection_pool(schema_version_check: false)
                 ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant(tenant_name)
               end
 
@@ -349,6 +356,15 @@ module ActiveRecord
             tenant_name = tenant_name.to_s
             tenanted_root_config.config_adapter.validate_tenant_name(tenant_name)
             tenant_name
+          end
+
+          def tenant_connection_pool?(tenant_name)
+            !connection_handler.retrieve_connection_pool(
+              connection_specification_name,
+              role: current_role,
+              shard: tenant_name,
+              strict: false
+            ).nil?
           end
 
           def retrieve_connection_pool(strict:)
