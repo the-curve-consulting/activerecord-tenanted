@@ -95,6 +95,12 @@ module ActiveRecord
 
       # This is essentially a simplified implementation of ActiveRecord::Tasks::DatabaseTasks.migrate
       def migrate(config)
+        # The database must exist before a connection is made to it. #create_database is
+        # idempotent, and reports whether it created the database, so there is no check here.
+        if config.config_adapter.create_database
+          $stdout.puts "Created database '#{config.database}'" if verbose?
+        end
+
         ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(config) do |conn|
           pool = conn.pool
 
@@ -104,7 +110,6 @@ module ActiveRecord
             if schema_dump_path && File.exist?(schema_dump_path)
               ActiveRecord::Tasks::DatabaseTasks.load_schema(config)
             end
-            # TODO: emit a "Created database" message once we sort out implicit creation
           end
 
           # migrate

@@ -14,6 +14,7 @@ An existing database whose directory name is no longer valid is skipped by `tena
 
 ### Added
 
+- `db:migrate:DBNAME` now creates a tenant database itself, and reports `Created database '...'` as the Rails `db:migrate` task does. The database was created before this as a side effect of the first connection, which only a SQLite database does. @jamesridgway
 - `db:seed:DBNAME` loads the seed data into each tenanted database, or into the tenant named by `ARTENANT` when that variable is set. `db:reset:DBNAME` now runs it after the tenant databases are migrated, so the tenanted task matches the Rails `db:reset` task, which also loads the seeds. @jamesridgway
 
 ### Fixed

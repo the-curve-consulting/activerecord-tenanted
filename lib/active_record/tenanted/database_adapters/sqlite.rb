@@ -64,9 +64,16 @@ module ActiveRecord
           end
         end
 
+        # Creates the database when it does not exist yet. The caller does not check first, so this
+        # method is idempotent. It returns true only when it creates the database, so that the
+        # caller can report the new database.
         def create_database
           ensure_database_directory_exists
+
+          return false if database_exist?
+
           FileUtils.touch(database_path)
+          true
         end
 
         def drop_database
@@ -86,15 +93,6 @@ module ActiveRecord
 
         def acquire_ready_lock(&block)
           ActiveRecord::Tenanted::Mutex::Ready.lock(database_path, &block)
-        end
-
-        def ensure_database_directory_exists
-          return unless database_path
-
-          database_dir = File.dirname(database_path)
-          unless File.directory?(database_dir)
-            FileUtils.mkdir_p(database_dir)
-          end
         end
 
         def database_path
@@ -130,6 +128,18 @@ module ActiveRecord
             database
           end
         end
+
+        private
+          # Rails does not make the directory of a SQLite database itself until
+          # rails/rails@f1f60dc1 is in a released version, so #create_database makes it here.
+          def ensure_database_directory_exists
+            return unless database_path
+
+            database_dir = File.dirname(database_path)
+            unless File.directory?(database_dir)
+              FileUtils.mkdir_p(database_dir)
+            end
+          end
       end
     end
   end
