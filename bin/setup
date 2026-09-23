@@ -19,6 +19,18 @@ done
 #  The MySQL and PostgreSQL test scenarios need a database server. Each server runs in a container
 #  that keeps its data between runs.
 #
+#  Each server is started with the durability of its data turned off. The test suite creates and
+#  drops a database for each test, and those are the operations that a server makes durable, so
+#  the settings decide how long a run takes. A PostgreSQL DROP DATABASE takes 1525 ms with the
+#  default settings and 8 ms without them. The data of a test server is thrown away, so there is
+#  nothing to lose. Do not copy these settings to a server that holds data you want to keep.
+#
+#  The connection limit of each server is also raised. The gem keeps one connection pool for each
+#  tenant, so a parallel run asks for many more connections than a server allows by default.
+#
+#  A container that already exists keeps the settings it was made with. Remove the containers to
+#  pick up a change to the settings.
+#
 #  The containers publish ports that are not the default ports of the servers, so that they do not
 #  take a port from a server that you already run. The test scenarios read the ports from
 #  ARTENANT_MYSQL_PORT and ARTENANT_POSTGRES_PORT, which default to the ports below, so set those
@@ -50,12 +62,20 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
   start_database_server activerecord-tenanted-mysql \
     --env MYSQL_ALLOW_EMPTY_PASSWORD=yes \
     --publish "${MYSQL_PORT}":3306 \
-    mysql:8.4 || echo "Error: could not start MySQL on port ${MYSQL_PORT}" >&2
+    mysql:8.4 \
+    --innodb-flush-log-at-trx-commit=0 \
+    --innodb-doublewrite=OFF \
+    --skip-log-bin \
+    --max-connections=500 || echo "Error: could not start MySQL on port ${MYSQL_PORT}" >&2
 
   start_database_server activerecord-tenanted-postgres \
     --env POSTGRES_PASSWORD=postgres \
     --publish "${POSTGRES_PORT}":5432 \
-    postgres:17 || echo "Error: could not start PostgreSQL on port ${POSTGRES_PORT}" >&2
+    postgres:17 \
+    -c fsync=off \
+    -c full_page_writes=off \
+    -c synchronous_commit=off \
+    -c max_connections=300 || echo "Error: could not start PostgreSQL on port ${POSTGRES_PORT}" >&2
 else
   echo "docker is not available: the MySQL and PostgreSQL servers are not started" >&2
 fi
