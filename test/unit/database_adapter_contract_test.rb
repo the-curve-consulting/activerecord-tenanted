@@ -18,6 +18,19 @@ describe "ActiveRecord::Tenanted::DatabaseAdapters contract" do
 
         assert_predicate(adapter, :database_exist?)
       end
+
+      test "returns true when it creates the database" do
+        assert(adapter.create_database)
+      end
+
+      # The caller does not check whether the database exists, so a second call must not raise.
+      test "is idempotent, and returns false when the database exists" do
+        adapter.create_database
+
+        assert_not(adapter.create_database)
+
+        assert_predicate(adapter, :database_exist?)
+      end
     end
 
     describe "#drop_database" do

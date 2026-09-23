@@ -18,10 +18,6 @@ module ActiveRecord
         end
 
         def new_connection
-          # TODO: This line can be removed once rails/rails@f1f60dc1 is in a released version of
-          # Rails, and this gem's dependency has been bumped to require that version or later.
-          config_adapter.ensure_database_directory_exists
-
           super.tap { |connection| connection.tenant = tenant }
         end
 

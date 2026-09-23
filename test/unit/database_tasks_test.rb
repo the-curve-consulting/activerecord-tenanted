@@ -68,6 +68,26 @@ describe ActiveRecord::Tenanted::DatabaseTasks do
         assert(File.exist?(schema_cache_path))
       end
 
+      describe "when database task output is not suppressed" do
+        # The test suite sets VERBOSE so that the database tasks stay quiet.
+        setup { @verbose_was, ENV["VERBOSE"] = ENV["VERBOSE"], nil }
+        teardown { ENV["VERBOSE"] = @verbose_was }
+
+        test "a created database should be reported" do
+          assert_output(/Created database '[^']*bar[^']*'/, nil) do
+            ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant("bar")
+          end
+        end
+
+        test "an existing database should not be reported" do
+          out, _err = capture_io do
+            ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant("foo")
+          end
+
+          assert_no_match(/Created database/, out)
+        end
+      end
+
       describe "when schema dump file exists" do
         setup { with_schema_dump_file }
 
