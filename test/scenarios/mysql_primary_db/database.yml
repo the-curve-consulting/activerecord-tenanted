@@ -5,6 +5,9 @@
 #  start it. The database names are short, because MySQL limits a name to 64 characters, and they
 #  all begin with the prefix of the test process, because the server is shared.
 #
+#  The tenanted database names carry a "_t_" part, so that the LIKE pattern that finds
+#  the tenant databases cannot match the untenanted "shared" database beside them.
+#
 test:
   primary:
     tenanted: true
@@ -12,12 +15,12 @@ test:
     host: "127.0.0.1"
     port: "%{mysql_port}"
     username: "root"
-    database: "%{prefix}_t_%%{tenant}"
+    database: "%{prefix}_%{env}_t_%%{tenant}"
     migrations_paths: "%{db_path}/tenanted_migrations"
   shared:
     adapter: "mysql2"
     host: "127.0.0.1"
     port: "%{mysql_port}"
     username: "root"
-    database: "%{prefix}_shared"
+    database: "%{prefix}_%{env}_shared"
     migrations_paths: "%{db_path}/shared_migrations"

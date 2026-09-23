@@ -26,7 +26,9 @@ class NoteCheerioJobTest < ActiveJob::TestCase
   end
 
   test "global id locator catches wrong tenant context" do
-    tenant = __method__
+    # The name is short and is not taken from __method__, because it becomes part of a database
+    # name, and MySQL allows a database name of only 64 characters.
+    tenant = "gid-wrong-context"
     note = ApplicationRecord.create_tenant(tenant) do
       Note.create!(title: "asdf", body: "Lorem ipsum.")
     end
@@ -39,7 +41,7 @@ class NoteCheerioJobTest < ActiveJob::TestCase
   end
 
   test "global id locator catches untenanted context" do
-    tenant = __method__
+    tenant = "gid-untenanted"
     note = ApplicationRecord.create_tenant(tenant) do
       Note.create!(title: "asdf", body: "Lorem ipsum.")
     end
