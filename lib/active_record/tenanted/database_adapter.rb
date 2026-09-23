@@ -25,6 +25,10 @@ module ActiveRecord
       end
 
       register "sqlite3", "ActiveRecord::Tenanted::DatabaseAdapters::SQLite"
+
+      # Both MySQL connection adapters talk to the same server, so they share one database adapter.
+      register "mysql2", "ActiveRecord::Tenanted::DatabaseAdapters::MySQL"
+      register "trilogy", "ActiveRecord::Tenanted::DatabaseAdapters::MySQL"
     end
   end
 end
