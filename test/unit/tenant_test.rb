@@ -1223,6 +1223,27 @@ describe ActiveRecord::Tenanted::Tenant do
   end
 
   describe "connection pools" do
+    for_each_scenario do
+      # A tenant database on a server holds a connection open until it is closed. The pool of a
+      # tenant that is reaped must therefore be disconnected, and not only forgotten, or a process
+      # would hold a connection for every tenant that it has ever served.
+      test "the pool of a reaped tenant is disconnected" do
+        base_config.stub(:max_connection_pools, 2) do
+          TenantedApplicationRecord.create_tenant("one") { User.count }
+          pool = TenantedApplicationRecord.with_tenant("one") { User.connection_pool }
+
+          assert_predicate(pool, :connected?)
+
+          TenantedApplicationRecord.create_tenant("two") { User.count }
+          TenantedApplicationRecord.create_tenant("three") { User.count }
+
+          assert_not_includes(TenantedApplicationRecord.tenanted_connection_pools.keys,
+                              [ "one", :writing ])
+          assert_not_predicate(pool, :connected?)
+        end
+      end
+    end
+
     with_scenario(:primary_named_db, :primary_record) do
       test "handle race conditions when creating a new connection pool" do
         TenantedApplicationRecord.create_tenant("foo") do
