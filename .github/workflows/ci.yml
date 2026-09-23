@@ -87,6 +87,37 @@ jobs:
           bundler-cache: true
       - run: bin/test-unit
 
+  unit-server:
+    name: "unit (${{ matrix.gemfile }}, ${{ matrix.adapter }})"
+    needs: rails_versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        gemfile: ${{ fromJSON(needs.rails_versions.outputs.gemfiles) }}
+        adapter: [mysql2, trilogy, postgresql]
+    continue-on-error: ${{ matrix.gemfile == 'rails_edge' }}
+    env:
+      BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
+      ARTENANT_ADAPTERS: ${{ matrix.adapter }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1.314.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      #  A service container cannot be given arguments for the server itself, only docker options,
+      #  and the settings that make a run fast are server arguments. The same script that a
+      #  developer runs starts the servers here, so both use servers with the same settings.
+      - run: bin/db-servers
+
+      - run: bin/test-unit
+
   integration:
     name: "integration (${{ matrix.gemfile }}, ${{ matrix.adapter }})"
     needs: rails_versions
@@ -110,4 +141,35 @@ jobs:
         with:
           ruby-version: "3.4"
           bundler-cache: true
+      - run: bin/test-integration
+
+  integration-server:
+    name: "integration (${{ matrix.gemfile }}, ${{ matrix.adapter }})"
+    needs: rails_versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        gemfile: ${{ fromJSON(needs.rails_versions.outputs.gemfiles) }}
+        adapter: [mysql2, trilogy, postgresql]
+    continue-on-error: ${{ matrix.gemfile == 'rails_edge' }}
+    env:
+      BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
+      ARTENANT_ADAPTERS: ${{ matrix.adapter }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1.314.0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      #  A service container cannot be given arguments for the server itself, only docker options,
+      #  and the settings that make a run fast are server arguments. The same script that a
+      #  developer runs starts the servers here, so both use servers with the same settings.
+      - run: bin/db-servers
+
       - run: bin/test-integration

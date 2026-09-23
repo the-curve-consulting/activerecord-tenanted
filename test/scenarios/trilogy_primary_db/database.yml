@@ -1,0 +1,28 @@
+#
+#  this test config has a primary database named "primary" on a MySQL server, reached with the
+#  trilogy connection adapter rather than mysql2. Both talk to the same server, and both use the
+#  same tenanted database adapter.
+#
+#  The server runs on the port in ARTENANT_MYSQL_PORT, which defaults to 13306. Run bin/setup to
+#  start it. The database names are short, because MySQL limits a name to 64 characters, and they
+#  all begin with the prefix of the test process, because the server is shared.
+#
+#  The tenanted database names carry a "_t_" part, so that the LIKE pattern that finds
+#  the tenant databases cannot match the untenanted "shared" database beside them.
+#
+test:
+  primary:
+    tenanted: true
+    adapter: "trilogy"
+    host: "127.0.0.1"
+    port: "%{mysql_port}"
+    username: "root"
+    database: "%{prefix}_%{env}_t_%%{tenant}"
+    migrations_paths: "%{db_path}/tenanted_migrations"
+  shared:
+    adapter: "trilogy"
+    host: "127.0.0.1"
+    port: "%{mysql_port}"
+    username: "root"
+    database: "%{prefix}_%{env}_shared"
+    migrations_paths: "%{db_path}/shared_migrations"
