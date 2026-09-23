@@ -2,6 +2,9 @@
 
 ## next / unreleased
 
+### Added
+
+- `db:seed:DBNAME` loads the seed data into each tenanted database, or into the tenant named by `ARTENANT` when that variable is set. `db:reset:DBNAME` now runs it after the tenant databases are migrated, so the tenanted task matches the Rails `db:reset` task, which also loads the seeds. @jamesridgway
 ### Fixed
 
 - The version in the schema cache dump is checked before the dump is used, as Rails does when `check_schema_cache_dump_version` is on. A tenanted connection pool compares the dump with the schema version of its database. Outside of a tenant context, the dump is compared with the latest migration file on disk. An outdated dump is ignored with a warning instead of being used silently. `db:migrate` also writes a new dump when the existing dump does not match the database, for example after a schema load or a change of branch. See [#319](https://github.com/basecamp/activerecord-tenanted/issues/319). @jamesridgway

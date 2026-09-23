@@ -434,8 +434,14 @@ Documentation outline:
     - dependency of db:drop
     - it operates on all tenants by default
     - the ARTENANT env var can be specified to run against a specific tenant
+  - db:seed:DBNAME
+    - dependency of db:reset:DBNAME
+    - it operates on all tenants by default
+    - the ARTENANT env var can be specified to run against a specific tenant
+    - note that db:seed (without DBNAME) loads the seeds into the current tenant only
   - db:reset:DBNAME replaces db:reset:tenant
     - dependency of db:reset
+    - it runs db:drop:DBNAME, db:migrate:DBNAME, and db:seed:DBNAME
     - it operates on all tenants by default
     - the ARTENANT env var can be specified to run against a specific tenant
 

@@ -2,6 +2,20 @@
 
 require "test_helper"
 
+# Stands in for Rails.application, which loads db/seeds.rb.
+class SeedLoader
+  attr_reader :tenants
+
+  def initialize
+    @tenants = []
+  end
+
+  def load_seed
+    @tenants << TenantedApplicationRecord.current_tenant
+    User.create!
+  end
+end
+
 describe ActiveRecord::Tenanted::DatabaseTasks do
   describe ".migrate_tenant" do
     for_each_scenario do
@@ -128,6 +142,71 @@ describe ActiveRecord::Tenanted::DatabaseTasks do
           ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(config) do |conn|
             assert_equal(20250213005959, conn.pool.migration_context.current_version)
           end
+        end
+      end
+    end
+  end
+
+  describe ".seed_tenant" do
+    for_each_scenario do
+      let(:seed_loader) { SeedLoader.new }
+
+      setup do
+        Rails.application.config.active_record_tenanted.connection_class = "TenantedApplicationRecord"
+        @seed_loader_was = ActiveRecord::Tasks::DatabaseTasks.seed_loader
+        ActiveRecord::Tasks::DatabaseTasks.seed_loader = seed_loader
+
+        TenantedApplicationRecord.create_tenant("foo")
+        TenantedApplicationRecord.create_tenant("bar")
+      end
+
+      teardown do
+        ActiveRecord::Tasks::DatabaseTasks.seed_loader = @seed_loader_was
+      end
+
+      test "loads the seeds into the tenant database" do
+        ActiveRecord::Tenanted::DatabaseTasks.new(base_config).seed_tenant("foo")
+
+        assert_equal([ "foo" ], seed_loader.tenants)
+        TenantedApplicationRecord.with_tenant("foo") { assert_equal(1, User.count) }
+        TenantedApplicationRecord.with_tenant("bar") { assert_equal(0, User.count) }
+      end
+
+      test "raises if the integration is not configured" do
+        Rails.application.config.active_record_tenanted.connection_class = nil
+
+        assert_raises(ActiveRecord::Tenanted::IntegrationNotConfiguredError) do
+          ActiveRecord::Tenanted::DatabaseTasks.new(base_config).seed_tenant("foo")
+        end
+      end
+    end
+  end
+
+  describe ".seed_all" do
+    for_each_scenario do
+      let(:tenants) { %w[foo bar baz] }
+      let(:seed_loader) { SeedLoader.new }
+
+      setup do
+        Rails.application.config.active_record_tenanted.connection_class = "TenantedApplicationRecord"
+        @seed_loader_was = ActiveRecord::Tasks::DatabaseTasks.seed_loader
+        ActiveRecord::Tasks::DatabaseTasks.seed_loader = seed_loader
+
+        tenants.each do |tenant|
+          TenantedApplicationRecord.create_tenant(tenant)
+        end
+      end
+
+      teardown do
+        ActiveRecord::Tasks::DatabaseTasks.seed_loader = @seed_loader_was
+      end
+
+      test "loads the seeds into all existing tenants" do
+        ActiveRecord::Tenanted::DatabaseTasks.new(base_config).seed_all
+
+        assert_same_elements(tenants, seed_loader.tenants)
+        tenants.each do |tenant|
+          TenantedApplicationRecord.with_tenant(tenant) { assert_equal(1, User.count) }
         end
       end
     end
