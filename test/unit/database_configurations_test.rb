@@ -67,6 +67,40 @@ describe ActiveRecord::Tenanted::DatabaseConfigurations do
           test "accepts the RFC 3986 unreserved characters" do
             assert_nothing_raised { config.database_for("a-b_c.d~9") }
           end
+
+          describe "length" do
+            let(:database) { "storage/db/tenanted/%{tenant}/main.sqlite3" }
+            let(:limit) { ActiveRecord::Tenanted::DatabaseAdapters::SQLite::MAX_PATH_COMPONENT_BYTESIZE }
+
+            test "accepts a tenant name that fills the path component" do
+              assert_nothing_raised { config.database_for("a" * limit) }
+            end
+
+            test "raises if the tenant name is longer than the path component allows" do
+              assert_raises(ActiveRecord::Tenanted::BadTenantNameError) do
+                config.database_for("a" * (limit + 1))
+              end
+            end
+
+            describe "parallel test workers" do
+              # The worker suffix is added to the last path component, which is the tenant name
+              # itself when the template ends with the specifier.
+              let(:database) { "storage/db/tenanted/%{tenant}" }
+              let(:suffix_length) { "_99".length }
+
+              setup { config.test_worker_id = 99 }
+
+              test "accepts a tenant name that fills the path component with the suffix" do
+                assert_nothing_raised { config.database_for("a" * (limit - suffix_length)) }
+              end
+
+              test "counts the test worker suffix, which is part of the database name" do
+                assert_raises(ActiveRecord::Tenanted::BadTenantNameError) do
+                  config.database_for("a" * (limit - suffix_length + 1))
+                end
+              end
+            end
+          end
         end
 
         def assert_all_tenants_found
@@ -78,6 +112,20 @@ describe ActiveRecord::Tenanted::DatabaseConfigurations do
             end
 
             assert_equal(Set.new(config.tenants), Set.new([ "foo", "bar", "baz" ]))
+          end
+        end
+
+        # The tenant name is read back out of a database path with a regular expression. The rest
+        # of the path is matched literally, whatever it holds.
+        describe "file path that holds a regular expression metacharacter" do
+          let(:database) { "storage/db/tenanted(v1)/%{tenant}/main.sqlite3" }
+
+          test "returns the path for a tenant" do
+            assert_equal("storage/db/tenanted(v1)/foo/main.sqlite3", config.database_for("foo"))
+          end
+
+          test "returns all tenants" do
+            assert_all_tenants_found
           end
         end
 

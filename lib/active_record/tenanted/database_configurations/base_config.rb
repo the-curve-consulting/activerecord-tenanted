@@ -27,7 +27,11 @@ module ActiveRecord
 
           config_adapter.validate_tenant_name(tenant_name)
 
-          database_pattern_for(tenant_name)
+          database_pattern_for(tenant_name).tap do |database|
+            # The database template and the test worker suffix are part of the name that the
+            # database gets, so the built name is validated as well as the tenant name.
+            config_adapter.validate_database_name(database)
+          end
         end
 
         # Interpolates a glob or a regular expression into the database path. The pattern is not a
