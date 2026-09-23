@@ -20,9 +20,28 @@ require "open3"
 require "active_support"
 require "active_support/core_ext/object" # deep_dup
 
-scenarios = Dir.glob("test/scenarios/*db/*record.rb").map do |path|
+# The scenarios run against SQLite, unless ARTENANT_ADAPTERS names other adapters as a comma
+# separated list. A scenario belongs to the adapter of its tenanted database.
+SCENARIO_ADAPTERS = (ENV["ARTENANT_ADAPTERS"] || "sqlite3").split(",").map(&:strip)
+
+def scenario_adapter(database)
+  YAML.load_file("test/scenarios/#{database}/database.yml")
+      .fetch("test")
+      .each_value
+      .find { |db_config| db_config["tenanted"] }
+      &.fetch("adapter")
+end
+
+scenarios = Dir.glob("test/scenarios/*db/*record.rb").filter_map do |path|
   database, models = path.scan(%r{test/scenarios/(.+db)/(.+record).rb}).flatten
+  next unless SCENARIO_ADAPTERS.include?(scenario_adapter(database))
+
   { database: database, models: models }
+end
+
+if scenarios.empty?
+  abort("ERROR: No test scenario uses an adapter in #{SCENARIO_ADAPTERS.inspect}. " \
+        "Check the ARTENANT_ADAPTERS environment variable.")
 end
 
 COLOR_FG_BLUE = "\e[0;34m"
