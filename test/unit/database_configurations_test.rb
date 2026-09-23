@@ -115,6 +115,36 @@ describe ActiveRecord::Tenanted::DatabaseConfigurations do
           end
         end
 
+        # A database that another configuration owns can sit where the tenant databases sit, and
+        # then it matches the tenant database pattern.
+        describe "a database that belongs to another configuration" do
+          let(:database) { "storage/db/tenanted/%{tenant}.sqlite3" }
+          let(:untenanted_database) { "storage/db/tenanted/shared.sqlite3" }
+
+          setup do
+            @configurations_was = ActiveRecord::Base.configurations
+            ActiveRecord::Base.configurations = {
+              "test" => {
+                "test_tenant" => { "adapter" => adapter, "database" => database, "tenanted" => true },
+                "shared" => { "adapter" => adapter, "database" => untenanted_database },
+              },
+            }
+          end
+
+          teardown { ActiveRecord::Base.configurations = @configurations_was }
+
+          test "is not returned as a tenant" do
+            Dir.chdir(dir) do
+              [ config.database_for("foo"), config.database_for("bar"), untenanted_database ].each do |path|
+                FileUtils.mkdir_p(File.dirname(path))
+                FileUtils.touch(path)
+              end
+
+              assert_same_elements([ "foo", "bar" ], config.tenants)
+            end
+          end
+        end
+
         # The tenant name is read back out of a database path with a regular expression. The rest
         # of the path is matched literally, whatever it holds.
         describe "file path that holds a regular expression metacharacter" do
