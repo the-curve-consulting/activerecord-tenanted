@@ -44,6 +44,10 @@ module ActiveRecord
     class TestCase < ActiveSupport::TestCase
       extend Minitest::Spec::DSL
 
+      # Separates the databases of one test run from the databases of the run before it. A
+      # parallel worker inherits this value when it is forked, and adds its own process id.
+      RUN_ID = SecureRandom.hex(3)
+
       class << self
         # When used with Minitest::Spec's `describe`, ActiveSupport::Testing's `test` creates methods
         # that may be inherited by subsequent describe blocks and run multiple times. Warn us if this
@@ -95,6 +99,19 @@ module ActiveRecord
             &.fetch("adapter")
         end
 
+        # Every test process gets its own prefix for the database names of a scenario, so that two
+        # runs, or two parallel workers, do not use the same database on a server that they share.
+        # RUN_ID separates one run from the next, and the process id separates the workers of one
+        # run. A SQLite scenario keeps its databases in a temporary directory and does not need
+        # this, but it uses the prefix as well, so that the whole suite covers it.
+        #
+        # The prefix holds only lowercase letters and digits, so that it is a valid name on every
+        # database server, and it is short, so that it leaves room for the tenant name inside the
+        # length that a server allows.
+        def database_prefix
+          "art#{RUN_ID}#{Process.pid}"
+        end
+
         def all_scenarios
           adapters = scenario_adapters
 
@@ -127,7 +144,10 @@ module ActiveRecord
             let(:storage_path) { File.join(ephemeral_path, "storage") }
             let(:db_path) { File.join(ephemeral_path, "db") }
             let(:db_scenario) { db_scenario.to_sym }
-            let(:db_config_yml) { sprintf(File.read(db_config_path), storage: storage_path, db_path: db_path) }
+            let(:db_config_yml) do
+              sprintf(File.read(db_config_path),
+                      storage: storage_path, db_path: db_path, prefix: self.class.database_prefix)
+            end
             let(:db_config) { YAML.load(db_config_yml) }
 
             setup do
@@ -151,6 +171,11 @@ module ActiveRecord
             end
 
             teardown do
+              # A SQLite scenario loses its databases with the temporary directory below, but a
+              # database server keeps them, so they are dropped while the configuration of the
+              # scenario is still in place.
+              drop_scenario_databases
+
               ActiveRecord::Migration.verbose = @migration_verbose_was
               ActiveRecord::Base.configurations = @old_configurations
               ActiveRecord::Tasks::DatabaseTasks.db_dir = @old_db_dir
@@ -236,6 +261,21 @@ module ActiveRecord
 
       def base_config
         all_configs.find { |c| c.configuration_hash[:tenanted] }
+      end
+
+      # Drops every database that the scenario made: the tenant databases through the adapter, and
+      # the databases that Rails itself prepared for the untenanted configurations.
+      def drop_scenario_databases
+        ActiveRecord::Base.configurations
+          .configs_for(env_name: "test", include_hidden: true)
+          .grep(ActiveRecord::Tenanted::DatabaseConfigurations::BaseConfig)
+          .each do |base_config|
+            base_config.tenants.each do |tenant|
+              base_config.new_tenant_config(tenant).config_adapter.drop_database
+            end
+          end
+
+        ActiveRecord::Tasks::DatabaseTasks.drop_all
       end
 
       def with_schema_dump_file

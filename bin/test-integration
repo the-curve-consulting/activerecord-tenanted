@@ -14,6 +14,7 @@ require "bundler/setup"
 PARALLEL = ENV["NCPU"].to_i > 1
 
 require "fileutils"
+require "securerandom"
 require "tmpdir"
 require "yaml"
 require "open3"
@@ -23,6 +24,12 @@ require "active_support/core_ext/object" # deep_dup
 # The scenarios run against SQLite, unless ARTENANT_ADAPTERS names other adapters as a comma
 # separated list. A scenario belongs to the adapter of its tenanted database.
 SCENARIO_ADAPTERS = (ENV["ARTENANT_ADAPTERS"] || "sqlite3").split(",").map(&:strip)
+
+# Each run prefixes the database names of its scenario apps, so that two runs do not use the same
+# database on a server that they share. Each app adds to the prefix, because two scenarios can
+# name a database the same way. The prefix is written into the config/database.yml of the app, so
+# every command of that app uses the same databases.
+RUN_ID = "art#{SecureRandom.hex(3)}"
 
 def scenario_adapter(database)
   YAML.load_file("test/scenarios/#{database}/database.yml")
@@ -73,7 +80,9 @@ def run_scenario(scenario)
 
   # generate database file
   database_file = File.join(GEM_PATH, "test/scenarios/#{scenario[:database]}/database.yml")
-  database_file_contents = sprintf(File.read(database_file), storage: "storage", db_path: "db")
+  database_file_contents = sprintf(File.read(database_file),
+                                   storage: "storage", db_path: "db",
+                                   prefix: "#{RUN_ID}#{SecureRandom.hex(2)}")
   database_file_hash = YAML.load(database_file_contents)
   database_file_hash["development"] = database_file_hash["test"].deep_dup
   database_file_hash["development"].each_value do |hash|
