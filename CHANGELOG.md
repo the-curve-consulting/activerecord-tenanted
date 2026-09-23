@@ -12,6 +12,10 @@ A tenant name may now contain only the RFC 3986 unreserved characters, which are
 
 An existing database whose directory name is no longer valid is skipped by `tenants` and `with_each_tenant`, and a warning is logged naming the file. Rename those directories before upgrading. @flavorjones
 
+### Added
+
+- `db:seed:DBNAME` loads the seed data into each tenanted database, or into the tenant named by `ARTENANT` when that variable is set. `db:reset:DBNAME` now runs it after the tenant databases are migrated, so the tenanted task matches the Rails `db:reset` task, which also loads the seeds. @jamesridgway
+
 ### Fixed
 
 - The test worker suffix is no longer added a second time to a SQLite database URI that has query params. The check for an existing suffix covered a file path and a URI without query params, but not a URI like `file:storage/%{tenant}/main.sqlite3?vfs=unix-dotfile`, which became `main.sqlite3_1_1?vfs=unix-dotfile` in a parallel test run. @jamesridgway

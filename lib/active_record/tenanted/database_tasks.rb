@@ -45,6 +45,19 @@ module ActiveRecord
         $stdout.puts "Dropped database '#{db_config.database}'" if verbose?
       end
 
+      def seed_all
+        tenants.each do |tenant|
+          seed_tenant(tenant)
+        end
+      end
+
+      def seed_tenant(tenant = set_current_tenant)
+        connection_class.with_tenant(tenant) do
+          ActiveRecord::Tasks::DatabaseTasks.load_seed
+        end
+        $stdout.puts "Seeded database for tenant #{tenant.inspect}" if verbose?
+      end
+
       def tenants
         config.tenants.presence || [ get_default_tenant ].compact
       end
@@ -66,12 +79,13 @@ module ActiveRecord
         tenant
       end
 
-      def set_current_tenant
-        unless (connection_class = ActiveRecord::Tenanted.connection_class)
-          raise ActiveRecord::Tenanted::IntegrationNotConfiguredError,
-                "ActiveRecord::Tenanted integration is not configured via connection_class"
-        end
+      def connection_class
+        ActiveRecord::Tenanted.connection_class ||
+          raise(ActiveRecord::Tenanted::IntegrationNotConfiguredError,
+                "ActiveRecord::Tenanted integration is not configured via connection_class")
+      end
 
+      def set_current_tenant
         if connection_class.current_tenant.nil?
           connection_class.current_tenant = get_default_tenant
         else
@@ -155,9 +169,18 @@ module ActiveRecord
         end
         task "db:drop" => "db:drop:#{name}"
 
-        # TODO: Rails' database tasks include "db:seed" in the tasks that "db:reset" runs.
-        desc "Drop and recreate tenanted #{name} database from its schema for the current environment"
-        task "db:reset:#{name}" => [ "db:drop:#{name}", "db:migrate:#{name}" ]
+        desc "Load the seed data into tenanted #{name} databases for current environment"
+        task "db:seed:#{name}" => "load_config" do
+          tenant = ENV["ARTENANT"]
+          if tenant.present?
+            seed_tenant(tenant)
+          else
+            seed_all
+          end
+        end
+
+        desc "Drop and recreate tenanted #{name} databases for the current environment and load the seeds"
+        task "db:reset:#{name}" => [ "db:drop:#{name}", "db:migrate:#{name}", "db:seed:#{name}" ]
         task "db:reset" => "db:reset:#{name}"
       end
     end
