@@ -289,6 +289,55 @@ production:
 
 Active Record Tenanted will reap the least-recently-used connection pools when this limit is surpassed. Developers are encouraged to tune this parameter with care, since setting it too low may lead to increased request latency due to frequently re-establishing database connections, while setting it too high may consume precious file descriptors and memory resources.
 
+When a connection pool is reaped, its connections are closed. A tenant that is no longer used therefore does not hold a connection to a database server.
+
+#### The connection budget on a database server
+
+A SQLite database costs a file descriptor and some memory. A database on a MySQL or a PostgreSQL server costs a connection, and a server has a hard limit on the number of connections it accepts. A process can ask for this many connections:
+
+```
+max_connection_pools × pool
+```
+
+and a deployment can ask for that again for each process:
+
+```
+max_connection_pools × pool × processes
+```
+
+The defaults are 50 for `max_connection_pools` and 5 for the Rails `pool`, so one process can ask for 250 connections. A PostgreSQL server accepts 100 by default, and a MySQL server accepts 151. One process with the default settings can therefore exhaust either server.
+
+The size of the cap is not the size of the problem, because a pool opens a connection only when a tenant is used, and a reaped pool closes its connections. The numbers above are the worst case, which is every capped pool busy at the same time.
+
+Three settings decide the budget:
+
+| Setting | What it does |
+|---|---|
+| `max_connection_pools` | How many tenants a process keeps a pool for. |
+| `pool` | How many connections one tenant may open at the same time. On a server this is the setting that multiplies. |
+| `idle_timeout` | How long an idle connection stays open. Rails closes it after 300 seconds by default. |
+
+For a server, start from the limit of the server and work back:
+
+```
+max_connection_pools × pool × processes  <  the max_connections of the server
+```
+
+A `pool` of 2 or 3 is usually enough for a tenanted application, because one request serves one tenant and a tenant is rarely busy in several threads at once. Lowering `pool` costs less than lowering `max_connection_pools`, because a request for a tenant that has no pool has to connect again, while a request for a tenant that has a pool only waits for a free connection in it.
+
+``` yaml
+production:
+  primary:
+    adapter: postgresql
+    database: "app_%{tenant}"
+    tenanted: true
+    max_connection_pools: 20
+    pool: 3
+    idle_timeout: 60
+```
+
+With 4 processes that is 20 × 3 × 4, or 240 connections in the worst case, so a PostgreSQL server would need `max_connections` raised, or a connection pooler such as PgBouncer in front of it.
+
 
 ### 2.4 Configuring the Connection Class
 
