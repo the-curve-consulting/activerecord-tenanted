@@ -47,7 +47,11 @@ module ActiveRecord
         end
 
         def tenants
-          config_adapter.tenant_databases
+          databases = untenanted_databases
+
+          config_adapter.tenant_databases.reject do |tenant_name|
+            databases.include?(database_pattern_for(tenant_name))
+          end
         end
 
         def new_tenant_config(tenant_name)
@@ -72,6 +76,18 @@ module ActiveRecord
         def max_connection_pools
           (configuration_hash[:max_connection_pools] || DEFAULT_MAX_CONNECTION_POOLS).to_i
         end
+
+        private
+          # The database of another configuration can match the tenant database pattern. A
+          # "%{tenant}" pattern on a database server shares the server with every other database
+          # of the application, and a pattern such as "storage/%{tenant}.sqlite3" shares its
+          # directory. Such a database is not a tenant.
+          def untenanted_databases
+            ActiveRecord::Base.configurations
+              .configs_for(env_name: env_name)
+              .reject { |config| config.configuration_hash[:tenanted] }
+              .filter_map(&:database)
+          end
       end
     end
   end
