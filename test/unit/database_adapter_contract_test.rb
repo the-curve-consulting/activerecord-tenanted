@@ -133,6 +133,24 @@ describe "ActiveRecord::Tenanted::DatabaseAdapters contract" do
       end
     end
 
+    # The database name carries what the database template and the test worker suffix add to the
+    # tenant name, and every database has a limit on the length of a name.
+    describe "#validate_database_name" do
+      test "accepts the database name of a simple tenant name" do
+        database = base_config.database_pattern_for("foo")
+
+        assert_nothing_raised { base_config.config_adapter.validate_database_name(database) }
+      end
+
+      test "raises BadTenantNameError on a database name that is too long" do
+        database = base_config.database_pattern_for("a" * 2048)
+
+        assert_raises(ActiveRecord::Tenanted::BadTenantNameError) do
+          base_config.config_adapter.validate_database_name(database)
+        end
+      end
+    end
+
     describe "#test_workerize" do
       let(:database) { base_config.database }
 

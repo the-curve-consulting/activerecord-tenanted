@@ -19,6 +19,8 @@ An existing database whose directory name is no longer valid is skipped by `tena
 
 ### Fixed
 
+- The tenant name is now read back out of a database path with an escaped and anchored regular expression. A database template that holds a regular expression metacharacter, such as `storage/db (v1)/%{tenant}/main.sqlite3`, made `tenants` return nothing, because the metacharacter was read as part of the expression. @jamesridgway
+- The database name is now validated, and not only the tenant name. A tenant name that makes a path component longer than 255 bytes raises `BadTenantNameError`, where it previously raised `Errno::ENAMETOOLONG` when the database was created. The check covers the whole name, so it includes what the database template and the parallel test worker suffix add. @jamesridgway
 - The version in the schema cache dump is checked before the dump is used, as Rails does when `check_schema_cache_dump_version` is on. A tenanted connection pool compares the dump with the schema version of its database. Outside of a tenant context, the dump is compared with the latest migration file on disk. An outdated dump is ignored with a warning instead of being used silently. `db:migrate` also writes a new dump when the existing dump does not match the database, for example after a schema load or a change of branch. See [#319](https://github.com/basecamp/activerecord-tenanted/issues/319). @jamesridgway
 - The test worker suffix is no longer added a second time to a SQLite database URI that has query params. The check for an existing suffix covered a file path and a URI without query params, but not a URI like `file:storage/%{tenant}/main.sqlite3?vfs=unix-dotfile`, which became `main.sqlite3_1_1?vfs=unix-dotfile` in a parallel test run. @jamesridgway
 

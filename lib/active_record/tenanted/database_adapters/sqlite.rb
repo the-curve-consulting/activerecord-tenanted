@@ -29,12 +29,22 @@ module ActiveRecord
         # punctuation is either reserved in a URI or makes URI.parse raise.
         TENANT_NAME_PATTERN = /\A[A-Za-z0-9_~-][A-Za-z0-9._~-]*\z/
 
+        # A filesystem limits one component of a path to 255 bytes. The limit is on the database
+        # path, so it covers the tenant name together with anything the database template and the
+        # test worker suffix add to it.
+        MAX_PATH_COMPONENT_BYTESIZE = 255
+
+        # Stands in for the tenant name while the scanner in #tenant_databases is built. It is
+        # long and specific, so that it cannot appear in the rest of a database path, and it holds
+        # only letters, so that Regexp.escape leaves it unchanged.
+        TENANT_NAME_PLACEHOLDER = "activerecordtenantedtenantnameplaceholder"
+
         def tenant_databases
           glob = path_for(db_config.database_pattern_for("*"))
-          scanner = Regexp.new(path_for(db_config.database_pattern_for("(.+)")))
+          scanner = tenant_name_scanner
 
           Dir.glob(glob).filter_map do |path|
-            result = path.scan(scanner).flatten.first
+            result = scanner.match(path)&.captures&.first
 
             if result.nil?
               Rails.logger.warn "ActiveRecord::Tenanted: Cannot parse tenant name from filename #{path.inspect}"
@@ -61,6 +71,22 @@ module ActiveRecord
             raise BadTenantNameError,
                   "Tenant name may not begin with a dot, and may contain only letters, digits, " \
                   "and the characters '-', '.', '_' and '~': #{tenant_name.inspect}"
+          end
+        end
+
+        # Validates the database name that a tenant name is built into, and not the tenant name
+        # alone, because the database template and the test worker suffix are part of the name
+        # that the filesystem must accept.
+        def validate_database_name(database)
+          too_long = path_for(database).split("/").find do |component|
+            component.bytesize > MAX_PATH_COMPONENT_BYTESIZE
+          end
+
+          if too_long
+            raise BadTenantNameError,
+                  "Tenant name makes the database path component " \
+                  "#{too_long.truncate(32).inspect} longer than " \
+                  "#{MAX_PATH_COMPONENT_BYTESIZE} bytes"
           end
         end
 
@@ -130,6 +156,27 @@ module ActiveRecord
         end
 
         private
+          # The scanner reads a tenant name back out of a database path. Everything but the tenant
+          # name is escaped, so that a path with a regular expression metacharacter is matched
+          # literally, and the scanner is anchored, so that it cannot match part of a longer path.
+          def tenant_name_scanner
+            path = Regexp.escape(path_for(db_config.database_pattern_for(TENANT_NAME_PLACEHOLDER)))
+
+            # A template may use the %{tenant} specifier more than once. The first use captures
+            # the tenant name, and a later use must match the name that was captured.
+            captured = false
+            pattern = path.gsub(TENANT_NAME_PLACEHOLDER) do
+              if captured
+                "\\1"
+              else
+                captured = true
+                "(.+)"
+              end
+            end
+
+            /\A#{pattern}\z/
+          end
+
           # Rails does not make the directory of a SQLite database itself until
           # rails/rails@f1f60dc1 is in a released version, so #create_database makes it here.
           def ensure_database_directory_exists
