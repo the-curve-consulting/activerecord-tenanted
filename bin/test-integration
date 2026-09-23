@@ -54,7 +54,7 @@ end
 COLOR_FG_BLUE = "\e[0;34m"
 COLOR_RESET = "\e[0m"
 
-def run_cmd(scenario, cmd, verbose: false, env: {})
+def run_cmd(scenario, cmd, verbose: false, env: {}, abort_on_failure: true)
   message = "#{COLOR_FG_BLUE}#{scenario}#{COLOR_RESET} > #{env.presence} #{cmd}"
   print message + (PARALLEL ? "\n" : "")
 
@@ -66,7 +66,22 @@ def run_cmd(scenario, cmd, verbose: false, env: {})
   puts " (#{elapsed.round(2)}s)" if !PARALLEL
   puts output if verbose || !status.success? || ENV["CI"]
 
+  return status.success? unless abort_on_failure
+
   abort("ERROR: Command failed") unless status.success?
+
+  true
+end
+
+# Drops the databases of the app. A SQLite database is a file in the app directory, which is
+# removed with the directory. A database on a server stays until it is dropped, so a run would
+# leave a database behind for each scenario and for each tenant that the tests made.
+#
+# A failure here does not stop the run, because it must not hide the result of the tests.
+def drop_databases(scenario)
+  %w[test development].each do |env|
+    run_cmd(scenario, "bin/rails db:drop", env: { "RAILS_ENV" => env }, abort_on_failure: false)
+  end
 end
 
 def run_scenario(scenario)
@@ -142,6 +157,7 @@ def run_scenario(scenario)
 
       run_cmd(scenario, ["bin/rails test", *TEST_ARGS].join(" "), verbose: true, env:)
     ensure
+      drop_databases(scenario)
       ENV["BUNDLE_GEMFILE"] = nil
     end
   end
