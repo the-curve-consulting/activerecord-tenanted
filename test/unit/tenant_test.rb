@@ -840,6 +840,26 @@ describe ActiveRecord::Tenanted::Tenant do
 
         assert(TenantedApplicationRecord.tenant_exist?(12345678))
       end
+
+      # The tenant selector calls this method on every request, so a connection pool for the
+      # tenant answers it and the database is left alone. The two tests below remove the database
+      # behind the gem's back, which is the only way to tell the two answers apart.
+      test "it returns true while a connection pool for the tenant exists" do
+        TenantedApplicationRecord.create_tenant("foo")
+        TenantedApplicationRecord.with_tenant("foo") { User.count } # makes the connection pool
+
+        base_config.new_tenant_config("foo").config_adapter.drop_database
+
+        assert(TenantedApplicationRecord.tenant_exist?("foo"))
+      end
+
+      test "it asks the database when there is no connection pool for the tenant" do
+        TenantedApplicationRecord.create_tenant("foo")
+
+        base_config.new_tenant_config("foo").config_adapter.drop_database
+
+        assert_not(TenantedApplicationRecord.tenant_exist?("foo"))
+      end
     end
   end
 
