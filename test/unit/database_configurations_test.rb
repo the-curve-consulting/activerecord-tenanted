@@ -302,6 +302,19 @@ describe ActiveRecord::Tenanted::DatabaseConfigurations do
         assert_raises(ActiveRecord::Tenanted::NoTenantError) { base_config.new_connection }
       end
 
+      # Two runs, or two parallel workers, must not use the same database on a server that they
+      # share, so the scenario databases carry a prefix that belongs to the test process.
+      test "the scenario databases carry the prefix of the test process" do
+        assert_includes(base_config.database, self.class.database_prefix)
+
+        untenanted = ActiveRecord::Base.configurations
+          .configs_for(env_name: "test", include_hidden: true)
+          .reject { |config| config.configuration_hash[:tenanted] }
+
+        assert_not_empty(untenanted)
+        untenanted.each { |config| assert_includes(config.database, self.class.database_prefix) }
+      end
+
       describe ".tenants" do
         test "returns an array of existing tenants" do
           assert_empty(base_config.tenants)
