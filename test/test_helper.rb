@@ -146,7 +146,8 @@ module ActiveRecord
             let(:db_scenario) { db_scenario.to_sym }
             let(:db_config_yml) do
               sprintf(File.read(db_config_path),
-                      storage: storage_path, db_path: db_path, prefix: self.class.database_prefix)
+                      storage: storage_path, db_path: db_path, prefix: self.class.database_prefix,
+                      mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306))
             end
             let(:db_config) { YAML.load(db_config_yml) }
 
@@ -179,6 +180,12 @@ module ActiveRecord
               ActiveRecord::Migration.verbose = @migration_verbose_was
               ActiveRecord::Base.configurations = @old_configurations
               ActiveRecord::Tasks::DatabaseTasks.db_dir = @old_db_dir
+
+              # The connection handler of the scenario is dropped below. A database server holds a
+              # connection open until it is closed, so the connections are closed here rather than
+              # left to the garbage collector. Without this a run of the whole suite uses more
+              # connections than the server allows.
+              ActiveRecord::Base.connection_handler.clear_all_connections!(:all)
               ActiveRecord::Base.connection_handler = ActiveRecord::Base.default_connection_handler = @old_connection_handler
               FileUtils.remove_entry ephemeral_path
             end
@@ -270,6 +277,10 @@ module ActiveRecord
           .configs_for(env_name: "test", include_hidden: true)
           .grep(ActiveRecord::Tenanted::DatabaseConfigurations::BaseConfig)
           .each do |base_config|
+            # A test can set a worker id, and the configuration then sees only the databases of
+            # that worker. Clear it, so that the teardown finds every database of the scenario.
+            base_config.test_worker_id = nil
+
             base_config.tenants.each do |tenant|
               base_config.new_tenant_config(tenant).config_adapter.drop_database
             end
