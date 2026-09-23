@@ -147,7 +147,8 @@ module ActiveRecord
             let(:db_config_yml) do
               sprintf(File.read(db_config_path),
                       storage: storage_path, db_path: db_path, prefix: self.class.database_prefix,
-                      mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306))
+                      mysql_port: ENV.fetch("ARTENANT_MYSQL_PORT", 13306),
+                      postgres_port: ENV.fetch("ARTENANT_POSTGRES_PORT", 15432))
             end
             let(:db_config) { YAML.load(db_config_yml) }
 
@@ -277,12 +278,15 @@ module ActiveRecord
           .configs_for(env_name: "test", include_hidden: true)
           .grep(ActiveRecord::Tenanted::DatabaseConfigurations::BaseConfig)
           .each do |base_config|
-            # A test can set a worker id, and the configuration then sees only the databases of
-            # that worker. Clear it, so that the teardown finds every database of the scenario.
-            base_config.test_worker_id = nil
+            # A test can give the configuration a test worker id, which adds a suffix to the
+            # database name. The databases are dropped once with that id and once without it, so
+            # that no database of the test stays behind on a server that the tests share.
+            [ base_config.test_worker_id, nil ].uniq.each do |test_worker_id|
+              base_config.test_worker_id = test_worker_id
 
-            base_config.tenants.each do |tenant|
-              base_config.new_tenant_config(tenant).config_adapter.drop_database
+              base_config.tenants.each do |tenant|
+                base_config.new_tenant_config(tenant).config_adapter.drop_database
+              end
             end
           end
 

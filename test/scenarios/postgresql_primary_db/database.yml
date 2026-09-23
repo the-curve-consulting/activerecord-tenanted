@@ -1,0 +1,21 @@
+#
+#  this test config has a primary database named "primary" on a PostgreSQL server
+#
+test:
+  primary:
+    tenanted: true
+    adapter: "postgresql"
+    host: "localhost"
+    port: "%{postgres_port}"
+    username: "postgres"
+    password: "postgres"
+    database: "%{prefix}_primary_%%{tenant}"
+    migrations_paths: "%{db_path}/tenanted_migrations"
+  shared:
+    adapter: "postgresql"
+    host: "localhost"
+    port: "%{postgres_port}"
+    username: "postgres"
+    password: "postgres"
+    database: "%{prefix}_shared"
+    migrations_paths: "%{db_path}/shared_migrations"

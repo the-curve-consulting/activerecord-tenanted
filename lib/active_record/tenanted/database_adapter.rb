@@ -29,6 +29,7 @@ module ActiveRecord
       # Both MySQL connection adapters talk to the same server, so they share one database adapter.
       register "mysql2", "ActiveRecord::Tenanted::DatabaseAdapters::MySQL"
       register "trilogy", "ActiveRecord::Tenanted::DatabaseAdapters::MySQL"
+      register "postgresql", "ActiveRecord::Tenanted::DatabaseAdapters::PostgreSQL"
     end
   end
 end
