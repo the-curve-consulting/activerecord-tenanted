@@ -809,15 +809,16 @@ describe ActiveRecord::Tenanted::Tenant do
       end
 
       test "it returns false if the tenant database is in the process of being migrated" do
-        # TODO: this test is SQLite-specific because it's using the Ready mutex directly.
-        config = TenantedApplicationRecord.tenanted_root_config
-        db_path = config.config_adapter.path_for(config.database_for("foo"))
+        adapter = base_config.new_tenant_config("foo").config_adapter
 
         assert_not(TenantedApplicationRecord.tenant_exist?("foo"))
 
-        ActiveRecord::Tenanted::Mutex::Ready.lock(db_path) do
+        adapter.acquire_ready_lock do
           assert_not(TenantedApplicationRecord.tenant_exist?("foo"))
-          FileUtils.touch(db_path) # pretend the database was created and migrated
+
+          adapter.create_database # the database is made, and is migrated next
+
+          assert_not(TenantedApplicationRecord.tenant_exist?("foo"))
         end
 
         assert(TenantedApplicationRecord.tenant_exist?("foo"))
@@ -1154,16 +1155,14 @@ describe ActiveRecord::Tenanted::Tenant do
       end
 
       test "it does not return tenants that are not ready" do
-        # TODO: this test is SQLite-specific because it's using the Ready mutex directly.
-        config = TenantedApplicationRecord.tenanted_root_config
-        db_path = config.config_adapter.path_for(config.database_for("foo"))
+        adapter = base_config.new_tenant_config("foo").config_adapter
 
         TenantedApplicationRecord.create_tenant("bar")
 
-        ActiveRecord::Tenanted::Mutex::Ready.lock(db_path) do
+        adapter.acquire_ready_lock do
           assert_equal([ "bar" ], TenantedApplicationRecord.tenants)
 
-          FileUtils.touch(db_path) # pretend the database was created
+          adapter.create_database # the database is made, and is migrated next
 
           assert_equal([ "bar" ], TenantedApplicationRecord.tenants)
         end
