@@ -5,6 +5,9 @@
 ### Added
 
 - `db:seed:DBNAME` loads the seed data into each tenanted database, or into the tenant named by `ARTENANT` when that variable is set. `db:reset:DBNAME` now runs it after the tenant databases are migrated, so the tenanted task matches the Rails `db:reset` task, which also loads the seeds. @jamesridgway
+### Fixed
+
+- The test worker suffix is no longer added a second time to a SQLite database URI that has query params. The check for an existing suffix covered a file path and a URI without query params, but not a URI like `file:storage/%{tenant}/main.sqlite3?vfs=unix-dotfile`, which became `main.sqlite3_1_1?vfs=unix-dotfile` in a parallel test run. @jamesridgway
 
 
 ## v0.8.0 / 2026-08-04
