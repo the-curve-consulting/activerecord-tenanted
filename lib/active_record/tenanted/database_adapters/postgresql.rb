@@ -112,13 +112,22 @@ module ActiveRecord
           false
         end
 
+        # PostgreSQL refuses to drop a database while a session is connected to it, and this gem
+        # keeps a connection pool for each tenant, so a session on the database of the tenant being
+        # dropped is the usual case, not an unusual one. WITH (FORCE) ends those sessions, and
+        # PostgreSQL 13 and later accept it.
+        #
+        # The statement is written here rather than left to Rails. Rails adds WITH (FORCE) only
+        # from the version after 8.1, and this gem supports 8.1, where a drop would fail with
+        # PG::ObjectInUse whenever a session was open.
+        FORCE_DROP_DATABASE_VERSION = 13_00_00
+
         def drop_database
           with_anonymous_connection do |conn|
-            # Rails writes DROP DATABASE IF EXISTS, so a database that is not there is not an
-            # error. Rails also adds WITH (FORCE) on PostgreSQL 13 and later, which ends the
-            # sessions of other processes. Without FORCE the server refuses to drop a database
-            # that another connection pool still holds a connection to.
-            conn.drop_database(db_config.database)
+            statement = "DROP DATABASE IF EXISTS #{conn.quote_table_name(db_config.database)}"
+            statement += " WITH (FORCE)" if conn.database_version >= FORCE_DROP_DATABASE_VERSION
+
+            conn.execute(statement)
           end
         end
 

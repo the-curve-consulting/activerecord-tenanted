@@ -3,6 +3,15 @@
 require "test_helper"
 
 describe ActiveRecord::Tenanted::Tenant do
+  #  A scenario whose tenanted database is the primary one has no subtenant, so the model scenario
+  #  that uses one does not apply to it. Every adapter has a scenario of that shape, so the list is
+  #  built from the scenarios themselves rather than written out, and a new adapter does not have
+  #  to be added here.
+  WITHOUT_SUBTENANT_RECORD = all_scenarios.keys
+    .select { |scenario| scenario.end_with?("primary_db") }
+    .to_h { |scenario| [ scenario.to_sym, [ :subtenant_record ] ] }
+    .freeze
+
   describe ".tenanted_config_name" do
     for_each_scenario({ primary_db: [ :primary_record, :secondary_record, :subtenant_record ] }) do
       test "it sets database configuration name to 'primary' by default" do
@@ -161,8 +170,7 @@ describe ActiveRecord::Tenanted::Tenant do
       end
     end
 
-    for_each_scenario(except: { primary_db: [ :subtenant_record ], mysql_primary_db: [ :subtenant_record ],
-                             postgresql_primary_db: [ :subtenant_record ] }) do
+    for_each_scenario(except: WITHOUT_SUBTENANT_RECORD) do
       describe "concrete classes" do
         test "concrete classes can call current_tenant=" do
           TenantedApplicationRecord.current_tenant = "foo"
@@ -334,8 +342,7 @@ describe ActiveRecord::Tenanted::Tenant do
       end
     end
 
-    for_each_scenario(except: { primary_db: [ :subtenant_record ], mysql_primary_db: [ :subtenant_record ],
-                             postgresql_primary_db: [ :subtenant_record ] }) do
+    for_each_scenario(except: WITHOUT_SUBTENANT_RECORD) do
       setup do
         TenantedApplicationRecord.create_tenant("foo")
         TenantedApplicationRecord.create_tenant("bar")

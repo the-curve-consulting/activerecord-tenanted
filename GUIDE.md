@@ -23,11 +23,12 @@
 - [2. Application Configuration](#2-application-configuration)
   * [2.1 The Default Configuration](#21-the-default-configuration)
   * [2.2 Configuring the Database](#22-configuring-the-database)
-  * [2.3 Configuring `max_connection_pools`](#23-configuring-max_connection_pools)
-  * [2.4 Configuring the Connection Class](#24-configuring-the-connection-class)
-  * [2.5 Configuring the Tenant Resolver](#25-configuring-the-tenant-resolver)
-  * [2.6 Other Tenant Configuration](#26-other-tenant-configuration)
-  * [2.7 Related Rails Configurations](#27-related-rails-configurations)
+  * [2.3 Choosing a database adapter](#23-choosing-a-database-adapter)
+  * [2.4 Configuring `max_connection_pools`](#24-configuring-max_connection_pools)
+  * [2.5 Configuring the Connection Class](#25-configuring-the-connection-class)
+  * [2.6 Configuring the Tenant Resolver](#26-configuring-the-tenant-resolver)
+  * [2.7 Other Tenant Configuration](#27-other-tenant-configuration)
+  * [2.8 Related Rails Configurations](#28-related-rails-configurations)
 - [Documentation "work in progress"](#documentation-work-in-progress)
   * [Active Record API](#active-record-api)
   * [Caching](#caching)
@@ -272,7 +273,56 @@ class ApplicationRecord < ActiveRecord::Base
 end
 ```
 
-### 2.3 Configuring `max_connection_pools`
+### 2.3 Choosing a database adapter
+
+Three adapters are supported: SQLite, MySQL and PostgreSQL. Each tenant gets a database of its own, and the `%{tenant}` specifier in the `database` key of the configuration says how its name is built.
+
+``` yaml
+production:
+  primary:
+    adapter: sqlite3
+    database: "storage/tenants/%{tenant}/main.sqlite3"
+    tenanted: true
+```
+
+``` yaml
+production:
+  primary:
+    adapter: mysql2      # or trilogy, which uses the same tenanted adapter
+    database: "app_%{tenant}"
+    tenanted: true
+```
+
+``` yaml
+production:
+  primary:
+    adapter: postgresql
+    database: "app_%{tenant}"
+    tenanted: true
+    # template: the database that CREATE DATABASE copies, if not template1
+```
+
+#### What a tenant name may contain
+
+A tenant name becomes part of the name of a database, so each adapter accepts a different set of characters, and the whole database name has a limit on its length. The name is checked when a tenant context is set, and again when the database name is built, so a name that does not fit raises `BadTenantNameError` rather than an error from the driver.
+
+| | Characters allowed in a tenant name | Limit on the whole database name |
+|---|---|---|
+| SQLite | letters, digits, `-` `.` `_` `~`, not starting with a dot | 255 bytes for one path component |
+| PostgreSQL | letters, digits, `-` `_` `~` | 63 bytes |
+| MySQL | letters, digits, `-` `_` | 64 characters |
+
+The limit is on the whole name, so it covers what the template adds as well as the tenant name itself. `app_%{tenant}` on PostgreSQL leaves 59 bytes for the tenant.
+
+MySQL is the narrowest, because it makes a directory on the server for each database and encodes a character that a filesystem cannot hold. PostgreSQL does not accept a dot, because Rails splits an identifier on the dot when it quotes a name.
+
+A name is therefore not portable between adapters in every case. A tenant called `acme.co` works on SQLite, and cannot be created on MySQL or PostgreSQL.
+
+#### Case
+
+PostgreSQL folds an unquoted identifier to lower case, but this gem never writes a database name unquoted, so the case of a tenant name is kept and `Foo` and `foo` are two different tenants, as they are on SQLite and MySQL. A person who types such a name into `psql` has to quote it.
+
+### 2.4 Configuring `max_connection_pools`
 
 By default, Active Record Tenanted will cap the number of tenanted connection pools to 50. Setting a limit on the number of "live" connection pools at any one time provides control over the number of file descriptors used for database connections. For SQLite databases, it's also an important control on the amount of memory used.
 
@@ -339,7 +389,7 @@ production:
 With 4 processes that is 20 × 3 × 4, or 240 connections in the worst case, so a PostgreSQL server would need `max_connections` raised, or a connection pooler such as PgBouncer in front of it.
 
 
-### 2.4 Configuring the Connection Class
+### 2.5 Configuring the Connection Class
 
 By default, Active Record Tenanted assumes that `ApplicationRecord` is the tenanted abstract base class:
 
@@ -391,7 +441,7 @@ end
 ```
 
 
-### 2.5 Configuring the Tenant Resolver
+### 2.6 Configuring the Tenant Resolver
 
 Active Record Tenanted's default tenant resolver uses the request's subdomain:
 
@@ -420,7 +470,7 @@ Rails.application.configure do
 end
 ```
 
-### 2.6 Other Tenant Configuration
+### 2.7 Other Tenant Configuration
 
 TODO:
 
@@ -430,7 +480,7 @@ TODO:
 - `default_tenant`
 
 
-### 2.7 Related Rails Configurations
+### 2.8 Related Rails Configurations
 
 Active Record Tenanted sets two Rails options in its railtie:
 
