@@ -28,6 +28,33 @@ set -euo pipefail
 MYSQL_PORT=${ARTENANT_MYSQL_PORT:-13306}
 POSTGRES_PORT=${ARTENANT_POSTGRES_PORT:-15432}
 
+#  A container that has just been created does not accept a connection yet. The server inside it
+#  initialises first, which takes some seconds, so each server is waited for. Without the wait a
+#  run that starts at once fails to connect, and the error says the connection was closed, which
+#  does not say why.
+STARTUP_TIMEOUT=${ARTENANT_DB_STARTUP_TIMEOUT:-120}
+
+#  Waits until the server answers the command that is given, which is a command that only a
+#  server that is ready can answer. A port that is open is not enough: a MySQL container accepts a
+#  connection on the port while it is still initialising, and then closes it.
+wait_for_database_server() {
+  local name=$1
+  shift
+
+  local waited=0
+  until docker exec "${name}" "$@" > /dev/null 2>&1; do
+    if [ "${waited}" -ge "${STARTUP_TIMEOUT}" ]; then
+      echo "Error: ${name} did not accept a connection in ${STARTUP_TIMEOUT} seconds" >&2
+      return 1
+    fi
+
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  echo "${name} is ready, after ${waited}s"
+}
+
 start_database_server() {
   local name=$1
   shift
@@ -61,6 +88,12 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
     -c full_page_writes=off \
     -c synchronous_commit=off \
     -c max_connections=300 || echo "Error: could not start PostgreSQL on port ${POSTGRES_PORT}" >&2
+
+  wait_for_database_server activerecord-tenanted-mysql \
+    mysql --user=root --execute="SELECT 1"
+
+  wait_for_database_server activerecord-tenanted-postgres \
+    pg_isready --username=postgres --dbname=postgres --quiet
 else
   echo "docker is not available: the MySQL and PostgreSQL servers are not started" >&2
 fi
