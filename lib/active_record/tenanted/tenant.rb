@@ -250,9 +250,7 @@ module ActiveRecord
           adapter = base_config.new_tenant_config(tenant_name).config_adapter
 
           adapter.acquire_ready_lock do
-            unless adapter.database_exist?
-              adapter.create_database
-
+            if adapter.create_database
               with_tenant(tenant_name) do
                 ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant(tenant_name)
               end
