@@ -250,9 +250,10 @@ module ActiveRecord
           adapter = base_config.new_tenant_config(tenant_name).config_adapter
 
           adapter.acquire_ready_lock do
-            unless adapter.database_exist?
-              adapter.create_database
-
+            # #create_database is idempotent, and it says whether it made the database, so the
+            # database is not asked about separately. On a database server each question is a
+            # connection and a query.
+            if adapter.create_database
               with_tenant(tenant_name) do
                 ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant(tenant_name)
               end
