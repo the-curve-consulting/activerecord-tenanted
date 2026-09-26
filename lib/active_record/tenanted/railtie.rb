@@ -128,6 +128,9 @@ module ActiveRecord
       end
 
       initializer "active_record_tenanted.active_storage", after: "active_storage.services" do
+        # An application that does not load Active Storage has no Disk Service to tenant.
+        next unless defined?(::ActiveStorage::Engine)
+
         # TODO: Add a hook for Disk Service. Without that, there's no good way to include this
         # module into the class before the service is initialized.
         # As a workaround, explicitly require this file.
