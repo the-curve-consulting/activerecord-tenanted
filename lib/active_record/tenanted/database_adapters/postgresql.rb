@@ -54,15 +54,21 @@ module ActiveRecord
         # Creates the database when it does not exist yet. The caller does not check first, so this
         # method is idempotent. It returns true only when it creates the database, so that the
         # caller can report the new database.
+        #
+        # PostgreSQL checks the CREATEDB privilege and the encoding of the template before it checks
+        # that the database exists, so the database is looked for first. The rescue stays, because
+        # db:migrate does not hold the ready lock, and another process can create the database
+        # between the check and the statement.
         def create_database
           with_anonymous_connection do |conn|
+            next false if database_exist_on?(conn)
+
             # The configuration hash carries the options of the new database, such as the template
             # to copy. Rails reads the options it knows and ignores every other key, which is what
             # its own PostgreSQL database task does.
             conn.create_database(database, database_options)
+            true
           end
-
-          true
         rescue ActiveRecord::DatabaseAlreadyExists
           false
         end
