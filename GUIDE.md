@@ -359,6 +359,8 @@ The defaults are 50 for `max_connection_pools` and 5 for the Rails `pool`, so on
 
 The size of the cap is not the size of the problem, because a pool opens a connection only when a tenant is used, and a reaped pool closes its connections. The numbers above are the worst case, which is every capped pool busy at the same time.
 
+Each process also keeps one more pool for each server. That pool connects to the server without naming a tenant database, and the gem uses it to ask whether a tenant database is there and is ready. `tenant_exist?` asks this for a tenant that has no pool, which includes each request that names a tenant that does not exist. The pool has the `pool` and `idle_timeout` of the tenanted configuration. It usually holds one connection, which closes when it is idle for `idle_timeout`.
+
 Three settings decide the budget:
 
 | Setting | What it does |

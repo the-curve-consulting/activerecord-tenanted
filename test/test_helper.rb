@@ -237,6 +237,10 @@ module ActiveRecord
               # scenario is still in place.
               drop_scenario_databases
 
+              # The adapters keep the catalog connection to a server open for the process. The
+              # configuration of each test holds paths of its own, so each test makes a new one.
+              ActiveRecord::Tenanted::DatabaseAdapters::Server.disconnect_catalog_connections!
+
               ActiveRecord::Migration.verbose = @migration_verbose_was
               ActiveRecord::Base.configurations = @old_configurations
               ActiveRecord::Tasks::DatabaseTasks.db_dir = @old_db_dir
