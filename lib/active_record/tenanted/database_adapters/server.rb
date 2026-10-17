@@ -193,8 +193,13 @@ module ActiveRecord
             handler&.clear_all_connections!(:all)
           end
 
-          def with_catalog_connection(&block)
-            Server.catalog_connection_pool(anonymous_db_config).with_connection(&block)
+          # The query cache can be on for this pool, and the catalog changes under it: a database
+          # is created, or the ready lock is released on another connection. A cached answer to the
+          # same question would then be wrong.
+          def with_catalog_connection
+            Server.catalog_connection_pool(anonymous_db_config).with_connection do |conn|
+              conn.uncached(dirties: false) { yield conn }
+            end
           end
       end
     end

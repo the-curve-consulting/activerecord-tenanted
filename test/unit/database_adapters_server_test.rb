@@ -49,6 +49,19 @@ describe ActiveRecord::Tenanted::DatabaseAdapters::Server do
           reader&.close
         end
 
+        test "are answered by the server when the query cache is on" do
+          adapter = adapter_for("foo")
+          pool = ActiveRecord::Tenanted::DatabaseAdapters::Server
+            .catalog_connection_pool(adapter.send(:anonymous_db_config))
+          pool.enable_query_cache!
+
+          assert_not(adapter.database_exist?)
+          adapter.create_database
+          assert_predicate(adapter, :database_exist?)
+        ensure
+          pool&.disable_query_cache!
+        end
+
         test "do not use the connection that holds the ready lock" do
           adapter = adapter_for("foo")
 
