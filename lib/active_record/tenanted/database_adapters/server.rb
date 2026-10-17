@@ -15,6 +15,16 @@ module ActiveRecord
       #  made on a connection handler of its own, so that the global pool of ActiveRecord::Base is
       #  never replaced.
       #
+      #  The questions that only read the catalog of the server (is the database there, is it
+      #  ready, which tenant databases are there) share one connection pool for each server in a
+      #  process. The tenant selector asks them on each request for a tenant that has no connection
+      #  pool yet, and that includes each request that names a tenant that does not exist. A new
+      #  connection for each of those requests costs a connection, a session setup and a disconnect.
+      #
+      #  To create or drop a database, and to take the ready lock, the adapter still uses a
+      #  connection of its own. The ready lock belongs to a session, so a session that holds it
+      #  must not go back to a pool where another caller can use it.
+      #
       #  A subclass says what is different about its server:
       #
       #    TENANT_NAME_PATTERN     the characters that a tenant name may hold
@@ -33,6 +43,45 @@ module ActiveRecord
         # only letters, so that neither Regexp.escape nor the LIKE escaping changes it.
         TENANT_NAME_PLACEHOLDER = "activerecordtenantedtenantnameplaceholder"
 
+        CATALOG_CONNECTION_NAME = "ActiveRecord::Tenanted::DatabaseAdapters::Server"
+
+        @catalog_handlers = {}
+        @catalog_handlers_lock = ::Mutex.new
+
+        # The state is kept on Server, not on each subclass, so call these methods on Server.
+        class << self
+          # The handler is kept, not the pool, because Rails discards each pool after a fork, and
+          # the handler makes a new pool the next time it is asked for one.
+          def catalog_connection_pool(anonymous_db_config)
+            catalog_handler(anonymous_db_config)
+              .retrieve_connection_pool(CATALOG_CONNECTION_NAME, role: ActiveRecord.writing_role, shard: :default)
+          end
+
+          def disconnect_catalog_connections!
+            handlers = @catalog_handlers_lock.synchronize do
+              @catalog_handlers.values.tap { @catalog_handlers.clear }
+            end
+
+            handlers.each { |handler| handler.clear_all_connections!(:all) }
+          end
+
+          private
+            # The configuration of a tenant holds the tenant name, and the name of the tenanted
+            # configuration, which the configuration of the tenanted database itself does not. The
+            # anonymous connection uses neither. The key leaves them out, so the tenanted database
+            # and all its tenants share one pool, and a tenant that does not exist adds no pool.
+            def catalog_handler(anonymous_db_config)
+              key = anonymous_db_config.configuration_hash.except(:tenant, :tenanted_config_name)
+
+              @catalog_handlers_lock.synchronize do
+                @catalog_handlers[key] ||= ActiveRecord::ConnectionAdapters::ConnectionHandler.new.tap do |handler|
+                  handler.establish_connection(anonymous_db_config, owner_name: CATALOG_CONNECTION_NAME,
+                                               role: ActiveRecord.writing_role, shard: :default)
+                end
+              end
+            end
+        end
+
         attr_reader :db_config
 
         def initialize(db_config)
@@ -43,7 +92,7 @@ module ActiveRecord
           pattern = db_config.database_pattern_for(TENANT_NAME_PLACEHOLDER)
           scanner = tenant_name_scanner(pattern)
 
-          with_anonymous_connection do |conn|
+          with_catalog_connection do |conn|
             database_names(conn, like_pattern(pattern)).filter_map do |name|
               result = scanner.match(name)&.captures&.first
 
@@ -73,13 +122,13 @@ module ActiveRecord
         end
 
         def database_exist?
-          with_anonymous_connection { |conn| database_exist_on?(conn) }
+          with_catalog_connection { |conn| database_exist_on?(conn) }
         end
 
         # The database is ready when it is there and nobody holds the ready lock. The lock belongs
         # to the session that took it, so the server is asked who holds it, on another connection.
         def database_ready?
-          with_anonymous_connection do |conn|
+          with_catalog_connection do |conn|
             database_exist_on?(conn) && !ready_lock_held_on?(conn)
           end
         end
@@ -142,6 +191,15 @@ module ActiveRecord
             pool.with_connection(&block)
           ensure
             handler&.clear_all_connections!(:all)
+          end
+
+          # The query cache can be on for this pool, and the catalog changes under it: a database
+          # is created, or the ready lock is released on another connection. A cached answer to the
+          # same question would then be wrong.
+          def with_catalog_connection
+            Server.catalog_connection_pool(anonymous_db_config).with_connection do |conn|
+              conn.uncached(dirties: false) { yield conn }
+            end
           end
       end
     end
