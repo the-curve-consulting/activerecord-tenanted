@@ -1249,6 +1249,73 @@ describe ActiveRecord::Tenanted::Tenant do
           assert_not_predicate(pool, :connected?)
         end
       end
+
+      test "a pool that a thread uses is not reaped, and the oldest idle pool is reaped instead" do
+        base_config.stub(:max_connection_pools, 2) do
+          TenantedApplicationRecord.create_tenant("one") { User.count }
+          TenantedApplicationRecord.create_tenant("two") { User.count }
+
+          in_use = Queue.new
+          release = Queue.new
+          busy = Thread.new do
+            TenantedApplicationRecord.with_tenant("one") do
+              User.transaction do
+                User.create!(email: "busy@example.org")
+                in_use << true
+                release.pop
+              end
+            end
+          end
+          in_use.pop
+          TenantedApplicationRecord.with_tenant("two") { User.count } # so "one" is the oldest
+
+          TenantedApplicationRecord.create_tenant("three") { User.count }
+
+          keys = TenantedApplicationRecord.tenanted_connection_pools.keys
+          assert_includes(keys, [ "one", :writing ])
+          assert_not_includes(keys, [ "two", :writing ])
+
+          release << true
+          busy.join
+
+          assert_equal(1, TenantedApplicationRecord.with_tenant("one") { User.count })
+        ensure
+          release&.push(true)
+          busy&.join
+        end
+      end
+
+      test "pools that threads use can take the process over the limit until they are idle" do
+        base_config.stub(:max_connection_pools, 1) do
+          TenantedApplicationRecord.create_tenant("one") { User.count }
+
+          in_use = Queue.new
+          release = Queue.new
+          busy = Thread.new do
+            TenantedApplicationRecord.with_tenant("one") do
+              User.transaction do
+                User.count
+                in_use << true
+                release.pop
+              end
+            end
+          end
+          in_use.pop
+
+          TenantedApplicationRecord.create_tenant("two") { User.count }
+
+          assert_equal(2, TenantedApplicationRecord.tenanted_connection_pools.size)
+
+          release << true
+          busy.join
+          TenantedApplicationRecord.with_tenant("two") { User.count }
+
+          assert_equal([ [ "two", :writing ] ], TenantedApplicationRecord.tenanted_connection_pools.keys)
+        ensure
+          release&.push(true)
+          busy&.join
+        end
+      end
     end
 
     with_scenario(:primary_named_db, :primary_record) do

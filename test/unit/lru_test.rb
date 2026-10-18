@@ -99,4 +99,19 @@ describe ActiveRecord::Tenanted::LRU do
     assert_equal 0, lru.size
     assert_equal [], lru.keys
   end
+
+  it "yields the oldest first without moving keys, and lets the block delete" do
+    lru[:a] = 1
+    lru[:b] = 2
+    lru[:c] = 3
+
+    yielded = []
+    lru.each_oldest_first do |key, value|
+      yielded << [ key, value ]
+      lru.delete(key) if key == :b
+    end
+
+    assert_equal [ [ :a, 1 ], [ :b, 2 ], [ :c, 3 ] ], yielded
+    assert_equal [ :a, :c ], lru.keys
+  end
 end
