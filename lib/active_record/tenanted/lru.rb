@@ -37,6 +37,16 @@ module ActiveRecord
       def keys
         @data.keys
       end
+
+      # Yields each key and value from the least recently used, without changing the order. It
+      # yields a copy, so the block can delete.
+      def each_oldest_first(&block)
+        @data.to_a.each(&block)
+      end
+
+      def delete(key)
+        @data.delete(key)
+      end
     end
 
     Lru = LRU

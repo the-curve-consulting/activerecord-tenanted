@@ -187,6 +187,7 @@ module ActiveRecord
       end.new.freeze
 
       CONNECTION_POOL_CREATION_LOCK = Thread::Mutex.new # :nodoc:
+      REAP_LOCK = Thread::Mutex.new # :nodoc:
 
       class_methods do
         def tenanted?
@@ -371,19 +372,37 @@ module ActiveRecord
             connection_handler.retrieve_connection_pool(connection_specification_name, role:, shard:, strict:).tap do |pool|
               if pool
                 tenanted_connection_pools[[ shard, role ]] = pool
-                reap_connection_pools
+                reap_connection_pools(keep: [ shard, role ])
               end
             end
           end
 
-          def reap_connection_pools
-            while tenanted_connection_pools.size > tenanted_root_config.max_connection_pools
-              info, _ = *tenanted_connection_pools.pop
-              shard, role = *info
+          # Only an idle pool is reaped. Rails disconnects a pool even while a thread uses one of its
+          # connections, after it waits twice the checkout timeout, so a busy pool is skipped. The
+          # process can then hold more pools than the limit, at most one for each busy thread.
+          #
+          # The pool that the caller has just retrieved is idle until the caller checks out a
+          # connection, so it is kept.
+          def reap_connection_pools(keep:)
+            REAP_LOCK.synchronize do
+              excess = tenanted_connection_pools.size - tenanted_root_config.max_connection_pools
 
-              connection_handler.remove_connection_pool(connection_specification_name, role:, shard:)
-              Rails.logger.info "  REAPED [tenant=#{shard} role=#{role}] Tenanted connection pool reaped to limit total connection pools"
+              tenanted_connection_pools.each_oldest_first do |info, pool|
+                break if excess <= 0
+                next if info == keep || pool_in_use?(pool)
+
+                shard, role = *info
+                tenanted_connection_pools.delete(info)
+                connection_handler.remove_connection_pool(connection_specification_name, role:, shard:)
+                Rails.logger.info "  REAPED [tenant=#{shard} role=#{role}] Tenanted connection pool reaped to limit total connection pools"
+                excess -= 1
+              end
             end
+          end
+
+          def pool_in_use?(pool)
+            stat = pool.stat
+            stat[:busy].positive? || stat[:waiting].positive?
           end
 
           def log_tenant_tag(tenant_name, &block)

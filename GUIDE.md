@@ -341,6 +341,8 @@ Active Record Tenanted will reap the least-recently-used connection pools when t
 
 When a connection pool is reaped, its connections are closed. A tenant that is no longer used therefore does not hold a connection to a database server.
 
+Only an idle pool is reaped. A pool that a thread uses, for example for a long request or a job, is skipped, and the next idle pool is reaped instead. So a process can hold more pools than `max_connection_pools` while they are busy, at most one more for each thread that uses a pool. The gem reaps when a tenant's pool is retrieved, so a pool that was busy is reaped at the next retrieval after it becomes idle, if the process is still over the limit.
+
 #### The connection budget on a database server
 
 A SQLite database costs a file descriptor and some memory. A database on a MySQL or a PostgreSQL server costs a connection, and a server has a hard limit on the number of connections it accepts. A process can ask for this many connections:
