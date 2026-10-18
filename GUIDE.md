@@ -529,6 +529,11 @@ Documentation outline:
     - it operates on all tenants by default
     - if there are no tenants it will create a database for the default tenant
     - the ARTENANT env var can be specified to run against a specific tenant
+  - db:rollback:DBNAME
+    - it operates on all existing tenants by default, and never creates a database
+    - the ARTENANT env var can be specified to run against a specific tenant
+    - the STEP env var sets how many migrations to roll back (default 1), and VERSION is not supported
+    - db:rollback runs it when the tenanted database is the only database; when the primary database is tenanted and there is another database, db:rollback names the tasks to use instead
   - db:drop:DBNAME replaces db:drop:tenant
     - dependency of db:drop
     - it operates on all tenants by default
@@ -607,6 +612,7 @@ TODO:
   - [x] make `db:migrate:__dbname__ ARTENANT=asdf` run migrations on just that tenant
   - [x] make `db:drop:__dbname__` drop all the existing tenants
   - [x] make `db:drop:__dbname__ ARTENANT=asdf` drop just that tenant
+  - [x] make `db:rollback:__dbname__` roll back all the existing tenants, or just `ARTENANT`
   - [x] make `db:migrate` run `db:migrate:__dbname__`
   - [x] make `db:prepare` run `db:migrate:__dbname__`
   - [x] make `db:drop` run `db:drop:__dbname__`

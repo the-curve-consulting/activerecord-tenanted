@@ -11,6 +11,42 @@ module ActiveRecord
         def verbose?
           ActiveRecord::Tasks::DatabaseTasks.send(:verbose?)
         end
+
+        # Rails' db:rollback works on one database. Rails does not count a tenanted configuration,
+        # so in an application whose only database is tenanted, or whose primary database is
+        # tenanted, it rolls back ActiveRecord::Base and raises NoTenantError.
+        def wrap_rails_rollback_task(base_configs)
+          return if base_configs.empty? || !Rake::Task.task_defined?("db:rollback")
+
+          rails_task = Rake::Task["db:rollback"]
+          rails_actions = rails_task.actions.dup
+          rails_task.clear_actions
+
+          rails_task.enhance do |task, args|
+            other_configs = ActiveRecord::Base.configurations.configs_for(env_name: ActiveRecord::Tasks::DatabaseTasks.env)
+            tenanted_tasks = base_configs.map { |config| "db:rollback:#{config.name}" }
+
+            if other_configs.empty? && base_configs.one?
+              Rake::Task[tenanted_tasks.first].invoke
+            elsif other_configs.empty? || primary_config_tenanted?
+              # Rails defines db:rollback:NAME only when it sees more than one database.
+              other_tasks = other_configs.map { |config| "db:rollback:#{config.name}" }.select { |name| Rake::Task.task_defined?(name) }
+
+              raise "The tenanted databases are rolled back by their own task. Available tasks are " \
+                    "#{(tenanted_tasks + other_tasks).to_sentence}."
+            else
+              rails_actions.each { |action| action.call(task, args) }
+            end
+          end
+        end
+
+        private
+          # The configuration that Rails' db:rollback rolls back: the one that ActiveRecord::Base
+          # connects to when the application boots.
+          def primary_config_tenanted?
+            ActiveRecord::Base.configurations.find_db_config(ActiveRecord::Tasks::DatabaseTasks.env)
+              .is_a?(ActiveRecord::Tenanted::DatabaseConfigurations::BaseConfig)
+          end
       end
 
       attr_reader :config
@@ -43,6 +79,24 @@ module ActiveRecord
         db_config = config.new_tenant_config(tenant)
         db_config.config_adapter.drop_database
         $stdout.puts "Dropped database '#{db_config.database}'" if verbose?
+      end
+
+      # Only the databases that exist are rolled back. The fallback to a default tenant that #tenants
+      # makes is not used, because a connection to a SQLite database that is not there creates it.
+      def rollback_all(step: 1)
+        config.tenants.each do |tenant|
+          rollback_tenant(tenant, step: step)
+        end
+      end
+
+      def rollback_tenant(tenant = set_current_tenant, step: 1)
+        db_config = config.new_tenant_config(tenant)
+
+        unless db_config.config_adapter.database_exist?
+          raise TenantDoesNotExistError, "The database for tenant #{tenant.inspect} does not exist."
+        end
+
+        rollback(db_config, step: step)
       end
 
       def seed_all
@@ -134,6 +188,20 @@ module ActiveRecord
         end
       end
 
+      def rollback(config, step:)
+        ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(config) do |conn|
+          pool = conn.pool
+
+          pool.migration_context.rollback(step)
+          pool.schema_cache.clear!
+
+          if Rails.env.development? || ENV["ARTENANT_SCHEMA_DUMP"].present?
+            ActiveRecord::Tasks::DatabaseTasks.dump_schema(config)
+            ActiveRecord::Tasks::DatabaseTasks.dump_schema_cache(pool, ActiveRecord::Tasks::DatabaseTasks.cache_dump_filename(config))
+          end
+        end
+      end
+
       def verbose?
         self.class.verbose?
       end
@@ -165,6 +233,24 @@ module ActiveRecord
         end
         task "db:migrate" => "db:migrate:#{name}"
         task "db:prepare" => "db:migrate:#{name}"
+
+        desc "Roll back tenanted #{name} databases for current environment (specify steps w/ STEP=n)"
+        task "db:rollback:#{name}" => "load_config" do
+          raise "VERSION is not supported - To rollback a specific version, use db:migrate:down" if ENV["VERSION"]
+
+          verbose_was = ActiveRecord::Migration.verbose
+          ActiveRecord::Migration.verbose = ActiveRecord::Tenanted::DatabaseTasks.verbose?
+
+          step = ENV["STEP"] ? ENV["STEP"].to_i : 1
+          tenant = ENV["ARTENANT"]
+          if tenant.present?
+            rollback_tenant(tenant, step: step)
+          else
+            rollback_all(step: step)
+          end
+        ensure
+          ActiveRecord::Migration.verbose = verbose_was
+        end
 
         desc "Drop tenanted #{name} databases for current environment"
         task "db:drop:#{name}" => "load_config" do
