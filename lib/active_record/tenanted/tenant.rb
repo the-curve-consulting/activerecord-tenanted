@@ -327,20 +327,31 @@ module ActiveRecord
 
         def _create_tenanted_pool(schema_version_check: true) # :nodoc:
           # ensure all classes use the same connection pool
-          return superclass._create_tenanted_pool unless connection_class?
+          return superclass._create_tenanted_pool(schema_version_check: schema_version_check) unless connection_class?
 
           tenant = current_tenant
           db_config = tenanted_root_config.new_tenant_config(tenant)
 
-          unless db_config.config_adapter.database_exist?
-            raise TenantDoesNotExistError, "The database for tenant #{tenant.inspect} does not exist."
+          # A database that exists can still be in the middle of create_tenant. Its tables are not
+          # there yet, and the check for pending migrations below would read schema_migrations
+          # while the migration writes it.
+          unless db_config.config_adapter.database_ready?
+            raise TenantDoesNotExistError, "The database for tenant #{tenant.inspect} does not exist or is not ready."
           end
           pool = establish_connection(db_config)
-          pool.schema_reflection = Tenanted::SchemaReflection.new(ActiveRecord::Tasks::DatabaseTasks.cache_dump_filename(db_config))
 
-          if schema_version_check
-            pending_migrations = pool.migration_context.open.pending_migrations
-            raise ActiveRecord::PendingMigrationError.new(pending_migrations: pending_migrations) if pending_migrations.any?
+          begin
+            pool.schema_reflection = Tenanted::SchemaReflection.new(ActiveRecord::Tasks::DatabaseTasks.cache_dump_filename(db_config))
+
+            if schema_version_check
+              pending_migrations = pool.migration_context.open.pending_migrations
+              raise ActiveRecord::PendingMigrationError.new(pending_migrations: pending_migrations) if pending_migrations.any?
+            end
+          rescue
+            # tenant_exist? and connection_pool take a pool as proof that the database is ready, so
+            # a pool that failed the check must not stay registered.
+            remove_connection
+            raise
           end
 
           pool
