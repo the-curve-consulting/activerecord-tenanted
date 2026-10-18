@@ -256,4 +256,125 @@ describe ActiveRecord::Tenanted::DatabaseTasks do
       end
     end
   end
+
+  describe ".rollback_tenant" do
+    for_each_scenario do
+      let(:tasks) { ActiveRecord::Tenanted::DatabaseTasks.new(base_config) }
+
+      setup do
+        %w[foo bar].each { |tenant| TenantedApplicationRecord.create_tenant(tenant) }
+        with_new_migration_file
+        tasks.migrate_all
+      end
+
+      test "rolls back one migration of the tenant, and no other tenant" do
+        tasks.rollback_tenant("foo")
+
+        assert_equal(20250203191115, current_version("foo"))
+        assert_equal(20250213005959, current_version("bar"))
+      end
+
+      test "rolls back the number of migrations in step" do
+        tasks.rollback_tenant("foo", step: 2)
+
+        assert_equal(0, current_version("foo"))
+      end
+
+      test "dumps the schema of the rolled back database" do
+        schema_path = ActiveRecord::Tasks::DatabaseTasks.schema_dump_path(base_config.new_tenant_config("foo"))
+
+        assert_includes(File.read(schema_path), "age")
+
+        tasks.rollback_tenant("foo")
+
+        assert_not_includes(File.read(schema_path), "age")
+      end
+
+      test "raises for a tenant that does not exist, and does not create its database" do
+        assert_raises(ActiveRecord::Tenanted::TenantDoesNotExistError) do
+          tasks.rollback_tenant("missing")
+        end
+
+        assert_not_predicate(base_config.new_tenant_config("missing").config_adapter, :database_exist?)
+      end
+    end
+  end
+
+  describe ".rollback_all" do
+    for_each_scenario do
+      test "rolls back each existing tenant" do
+        tasks = ActiveRecord::Tenanted::DatabaseTasks.new(base_config)
+        %w[foo bar].each { |tenant| TenantedApplicationRecord.create_tenant(tenant) }
+        with_new_migration_file
+        tasks.migrate_all
+
+        tasks.rollback_all
+
+        assert_equal(20250203191115, current_version("foo"))
+        assert_equal(20250203191115, current_version("bar"))
+      end
+
+      test "does not create a database when there are no tenants" do
+        ActiveRecord::Tenanted::DatabaseTasks.new(base_config).rollback_all
+
+        assert_empty(base_config.tenants)
+      end
+    end
+  end
+
+  describe ".wrap_rails_rollback_task" do
+    setup do
+      @rake_application_was = Rake.application
+      Rake.application = Rake::Application.new
+      @ran = []
+      ran = @ran
+      Rake::Task.define_task("db:rollback") { ran << :rails }
+    end
+
+    teardown do
+      Rake.application = @rake_application_was
+    end
+
+    with_scenario(:primary_db, :primary_record) do
+      setup do
+        ran = @ran
+        Rake::Task.define_task("db:rollback:#{base_config.name}") { ran << :tenanted }
+        ActiveRecord::Tenanted::DatabaseTasks.wrap_rails_rollback_task([ base_config ])
+      end
+
+      test "runs the tenanted task when the tenanted database is the only database" do
+        ActiveRecord::Base.configurations.stub(:configs_for, []) do
+          Rake::Task["db:rollback"].invoke
+        end
+
+        assert_equal([ :tenanted ], @ran)
+      end
+
+      test "names the tenanted task when the primary database is tenanted" do
+        error = assert_raises(RuntimeError) { Rake::Task["db:rollback"].invoke }
+
+        assert_includes(error.message, "db:rollback:#{base_config.name}")
+        assert_empty(@ran)
+      end
+    end
+
+    with_scenario(:secondary_db, :primary_record) do
+      setup do
+        ActiveRecord::Tenanted::DatabaseTasks.wrap_rails_rollback_task([ base_config ])
+      end
+
+      test "runs the Rails task when the primary database is not tenanted" do
+        Rake::Task["db:rollback"].invoke
+
+        assert_equal([ :rails ], @ran)
+      end
+    end
+  end
+
+  private
+    def current_version(tenant)
+      ActiveRecord::Tasks::DatabaseTasks.with_temporary_connection(base_config.new_tenant_config(tenant)) do |conn|
+        conn.pool.migration_context.current_version
+      end
+    end
 end

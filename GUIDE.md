@@ -361,6 +361,8 @@ The defaults are 50 for `max_connection_pools` and 5 for the Rails `pool`, so on
 
 The size of the cap is not the size of the problem, because a pool opens a connection only when a tenant is used, and a reaped pool closes its connections. The numbers above are the worst case, which is every capped pool busy at the same time.
 
+Each process also keeps one more pool for each server. That pool connects to the server without naming a tenant database, and the gem uses it to ask whether a tenant database is there and is ready. `tenant_exist?` asks this for a tenant that has no pool, which includes each request that names a tenant that does not exist. The pool has the `pool` and `idle_timeout` of the tenanted configuration. It usually holds one connection, which closes when it is idle for `idle_timeout`.
+
 Three settings decide the budget:
 
 | Setting | What it does |
@@ -531,6 +533,11 @@ Documentation outline:
     - it operates on all tenants by default
     - if there are no tenants it will create a database for the default tenant
     - the ARTENANT env var can be specified to run against a specific tenant
+  - db:rollback:DBNAME
+    - it operates on all existing tenants by default, and never creates a database
+    - the ARTENANT env var can be specified to run against a specific tenant
+    - the STEP env var sets how many migrations to roll back (default 1), and VERSION is not supported
+    - db:rollback runs it when the tenanted database is the only database; when the primary database is tenanted and there is another database, db:rollback names the tasks to use instead
   - db:drop:DBNAME replaces db:drop:tenant
     - dependency of db:drop
     - it operates on all tenants by default
@@ -609,6 +616,7 @@ TODO:
   - [x] make `db:migrate:__dbname__ ARTENANT=asdf` run migrations on just that tenant
   - [x] make `db:drop:__dbname__` drop all the existing tenants
   - [x] make `db:drop:__dbname__ ARTENANT=asdf` drop just that tenant
+  - [x] make `db:rollback:__dbname__` roll back all the existing tenants, or just `ARTENANT`
   - [x] make `db:migrate` run `db:migrate:__dbname__`
   - [x] make `db:prepare` run `db:migrate:__dbname__`
   - [x] make `db:drop` run `db:drop:__dbname__`

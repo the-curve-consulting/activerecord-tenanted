@@ -15,6 +15,10 @@ task "db:fixtures:load" => "db:tenant"
 task "db:seed"          => "db:tenant"
 
 # Create tenanted rake tasks
-ActiveRecord::Tenanted.base_configs(ActiveRecord::DatabaseConfigurations.new(ActiveRecord::Tasks::DatabaseTasks.setup_initial_database_yaml)).each do |config|
+tenanted_base_configs = ActiveRecord::Tenanted.base_configs(
+  ActiveRecord::DatabaseConfigurations.new(ActiveRecord::Tasks::DatabaseTasks.setup_initial_database_yaml)
+)
+tenanted_base_configs.each do |config|
   ActiveRecord::Tenanted::DatabaseTasks.new(config).register_rake_tasks
 end
+ActiveRecord::Tenanted::DatabaseTasks.wrap_rails_rollback_task(tenanted_base_configs)

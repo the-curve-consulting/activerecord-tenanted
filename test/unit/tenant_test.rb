@@ -1393,6 +1393,22 @@ describe ActiveRecord::Tenanted::Tenant do
         end
       end
 
+      test "no connection pool is made while the tenant database is created" do
+        adapter = base_config.new_tenant_config("foo").config_adapter
+
+        adapter.acquire_ready_lock do
+          adapter.create_database # the database is made, and is migrated next
+
+          assert_raises(ActiveRecord::Tenanted::TenantDoesNotExistError) do
+            TenantedApplicationRecord.with_tenant("foo") { User.count }
+          end
+        end
+
+        ActiveRecord::Tenanted::DatabaseTasks.new(base_config).migrate_tenant("foo")
+
+        TenantedApplicationRecord.with_tenant("foo") { assert_equal(0, User.count) }
+      end
+
       test "connection pools check the schema cache dump against the database" do
         TenantedApplicationRecord.create_tenant("foo") do
           assert_instance_of(ActiveRecord::Tenanted::SchemaReflection, User.connection_pool.schema_reflection)
@@ -1412,6 +1428,14 @@ describe ActiveRecord::Tenanted::Tenant do
         test "pending migrations should raise an error" do
           assert_raises(ActiveRecord::PendingMigrationError) do
             TenantedApplicationRecord.with_tenant("foo") { User.first }
+          end
+        end
+
+        test "pending migrations raise an error on each use, because the pool is not kept" do
+          2.times do
+            assert_raises(ActiveRecord::PendingMigrationError) do
+              TenantedApplicationRecord.with_tenant("foo") { User.first }
+            end
           end
         end
 
