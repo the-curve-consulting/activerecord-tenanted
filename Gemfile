@@ -13,7 +13,7 @@ group :development, :test do
   gem "minitest-mock", "5.27.0"
   gem "minitest-parallel_fork", "2.1.1", require: false
   gem "msgpack", "1.8.3"
-  gem "sqlite3", "2.9.5"
+  gem "sqlite3", "2.9.6"
 
   # The database clients that the MySQL and PostgreSQL test scenarios use. Run bin/setup to start
   # the servers.
