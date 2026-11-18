@@ -37,7 +37,7 @@ module ActiveRecord
       #    #database_names         the databases that match a LIKE pattern, on a connection
       #    #anonymous_db_config    how to reach the server without naming a tenant database
       #
-      class Server
+      class Server < Base
         # Stands in for the tenant name while the LIKE pattern and the scanner are built. It is
         # long and specific, so that it cannot appear in the rest of a database name, and it holds
         # only letters, so that neither Regexp.escape nor the LIKE escaping changes it.
@@ -82,12 +82,6 @@ module ActiveRecord
             end
         end
 
-        attr_reader :db_config
-
-        def initialize(db_config)
-          @db_config = db_config
-        end
-
         def tenant_databases
           pattern = db_config.database_pattern_for(TENANT_NAME_PLACEHOLDER)
           scanner = tenant_name_scanner(pattern)
@@ -115,10 +109,6 @@ module ActiveRecord
           tenant_name.encoding.ascii_compatible? &&
             tenant_name.valid_encoding? &&
             self.class::TENANT_NAME_PATTERN.match?(tenant_name)
-        end
-
-        def validate_tenant_name(tenant_name)
-          raise BadTenantNameError, tenant_name_message(tenant_name) unless valid_tenant_name?(tenant_name)
         end
 
         def database_exist?
