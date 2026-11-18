@@ -37,6 +37,12 @@ STARTUP_TIMEOUT=${ARTENANT_DB_STARTUP_TIMEOUT:-120}
 #  Waits until the server answers the command that is given, which is a command that only a
 #  server that is ready can answer. A port that is open is not enough: a MySQL container accepts a
 #  connection on the port while it is still initialising, and then closes it.
+#
+#  The command must reach the server over TCP, as the tests do. While a new container initialises,
+#  its entrypoint runs a temporary server that listens only on the Unix socket, and then stops it
+#  and starts the real server. A command on the socket is answered by the temporary server, so the
+#  wait ended before the real server was up, and the first test that connected failed with "Lost
+#  connection to MySQL server at 'reading initial communication packet'".
 wait_for_database_server() {
   local name=$1
   shift
@@ -90,10 +96,10 @@ if command -v docker &> /dev/null && docker info &> /dev/null; then
     -c max_connections=300 || echo "Error: could not start PostgreSQL on port ${POSTGRES_PORT}" >&2
 
   wait_for_database_server activerecord-tenanted-mysql \
-    mysql --user=root --execute="SELECT 1"
+    mysql --protocol=TCP --host=127.0.0.1 --user=root --execute="SELECT 1"
 
   wait_for_database_server activerecord-tenanted-postgres \
-    pg_isready --username=postgres --dbname=postgres --quiet
+    pg_isready --host=127.0.0.1 --username=postgres --dbname=postgres --quiet
 else
   echo "docker is not available: the MySQL and PostgreSQL servers are not started" >&2
 fi
