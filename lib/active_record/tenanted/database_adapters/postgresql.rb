@@ -23,7 +23,11 @@ module ActiveRecord
         # parameter or as a value in a query. The case of a tenant name is therefore kept, and two
         # names that differ only in case are two tenants, as they are for SQLite. A person who
         # types such a name into psql must quote it there.
-        TENANT_NAME_PATTERN = /\A[A-Za-z0-9_~-]+\z/
+        #
+        # A name may not begin with a tilde. PostgreSQL would accept it, but the Active Storage disk
+        # service puts the tenant name into a filesystem path, where File.expand_path reads a
+        # leading tilde as a home directory when the name begins a relative path.
+        TENANT_NAME_PATTERN = /\A[A-Za-z0-9_-][A-Za-z0-9_~-]*\z/
 
         # PostgreSQL limits a database name to 63 bytes and truncates a longer name without a
         # warning. The limit is on the whole name, so it covers the tenant name together with
@@ -109,8 +113,8 @@ module ActiveRecord
 
         private
           def tenant_name_message(tenant_name)
-            "Tenant name may contain only letters, digits, and the characters " \
-              "'-', '_' and '~': #{tenant_name.inspect}"
+            "Tenant name may not begin with a tilde, and may contain only letters, digits, " \
+              "and the characters '-', '_' and '~': #{tenant_name.inspect}"
           end
 
           def database_options
