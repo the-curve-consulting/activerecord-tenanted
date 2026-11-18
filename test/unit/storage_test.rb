@@ -26,6 +26,18 @@ describe ActiveRecord::Tenanted::Storage do
               end
             end
           end
+
+          # Rails' own connected_to sets the shard without going through this gem, and a shard
+          # set that way may be a Symbol or an Integer.
+          [ [ "a Symbol", :foo, "foo" ], [ "an Integer", 42, "42" ] ].each do |description, shard, name|
+            test "returns the tenant set by connected_to with #{description} shard" do
+              ActiveRecord::Tenanted.stub(:connection_class, TenantedApplicationRecord) do
+                TenantedApplicationRecord.connected_to(shard: shard, role: ActiveRecord.writing_role) do
+                  assert_equal("/path/to/#{name}/storage", service.root)
+                end
+              end
+            end
+          end
         end
 
         describe "with a non-tenanted root path" do
