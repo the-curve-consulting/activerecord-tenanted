@@ -131,6 +131,17 @@ describe "ActiveRecord::Tenanted::DatabaseAdapters contract" do
           adapter.validate_tenant_name("foo/bar")
         end
       end
+
+      # The Active Storage disk service puts the tenant name into a path, whatever the database,
+      # and File.expand_path reads a leading tilde as a home directory.
+      test "raises BadTenantNameError on a name that begins with a tilde" do
+        [ "~", "~root" ].each do |tenant_name|
+          assert_raises(ActiveRecord::Tenanted::BadTenantNameError) do
+            adapter.validate_tenant_name(tenant_name)
+          end
+          assert_not(adapter.valid_tenant_name?(tenant_name))
+        end
+      end
     end
 
     # The database name carries what the database template and the test worker suffix add to the

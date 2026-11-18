@@ -308,13 +308,13 @@ A tenant name becomes part of the name of a database, so each adapter accepts a 
 
 | | Characters allowed in a tenant name | Limit on the whole database name |
 |---|---|---|
-| SQLite | letters, digits, `-` `.` `_` `~`, not starting with a dot | 255 bytes for one path component |
-| PostgreSQL | letters, digits, `-` `_` `~` | 63 bytes |
+| SQLite | letters, digits, `-` `.` `_` `~`, not starting with a dot or a tilde | 255 bytes for one path component |
+| PostgreSQL | letters, digits, `-` `_` `~`, not starting with a tilde | 63 bytes |
 | MySQL | letters, digits, `-` `_` | 64 characters |
 
 The limit is on the whole name, so it covers what the template adds as well as the tenant name itself. `app_%{tenant}` on PostgreSQL leaves 59 bytes for the tenant.
 
-MySQL is the narrowest, because it makes a directory on the server for each database and encodes a character that a filesystem cannot hold. PostgreSQL does not accept a dot, because Rails splits an identifier on the dot when it quotes a name.
+MySQL is the narrowest, because it makes a directory on the server for each database and encodes a character that a filesystem cannot hold. PostgreSQL does not accept a dot, because Rails splits an identifier on the dot when it quotes a name. Neither SQLite nor PostgreSQL accepts a leading tilde, because the Active Storage disk service puts the tenant name into a path, and `File.expand_path` reads a leading `~` as a home directory.
 
 A name is therefore not portable between adapters in every case. A tenant called `acme.co` works on SQLite, and cannot be created on MySQL or PostgreSQL.
 
