@@ -14,13 +14,7 @@ module ActiveRecord
       #  3. Moving test_workerize and path_for to be SQLite connection adapter class methods,
       #     possibly into Rails
       #
-      class SQLite
-        attr_reader :db_config
-
-        def initialize(db_config)
-          @db_config = db_config
-        end
-
+      class SQLite < Base
         # A tenant name is interpolated into the database path as a single path segment, and that
         # path may be a URI (see #path_for), so a name is limited to the RFC 3986 unreserved
         # characters and may not begin with a dot or a tilde. A leading dot either traverses out of
@@ -65,14 +59,6 @@ module ActiveRecord
           tenant_name.encoding.ascii_compatible? &&
             tenant_name.valid_encoding? &&
             TENANT_NAME_PATTERN.match?(tenant_name)
-        end
-
-        def validate_tenant_name(tenant_name)
-          unless valid_tenant_name?(tenant_name)
-            raise BadTenantNameError,
-                  "Tenant name may not begin with a dot or a tilde, and may contain only letters, digits, " \
-                  "and the characters '-', '.', '_' and '~': #{tenant_name.inspect}"
-          end
         end
 
         # Validates the database name that a tenant name is built into, and not the tenant name
@@ -157,6 +143,11 @@ module ActiveRecord
         end
 
         private
+          def tenant_name_message(tenant_name)
+            "Tenant name may not begin with a dot or a tilde, and may contain only letters, digits, " \
+              "and the characters '-', '.', '_' and '~': #{tenant_name.inspect}"
+          end
+
           # The scanner reads a tenant name back out of a database path. Everything but the tenant
           # name is escaped, so that a path with a regular expression metacharacter is matched
           # literally, and the scanner is anchored, so that it cannot match part of a longer path.

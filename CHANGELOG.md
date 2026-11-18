@@ -22,6 +22,7 @@ An existing database whose directory name is no longer valid is skipped by `tena
 
 ### Changed
 
+- The database adapters now share a `DatabaseAdapters::Base` class, which keeps the database configuration and raises `BadTenantNameError` from `validate_tenant_name`. An adapter defines `valid_tenant_name?`, and may define `tenant_name_message` to say which names it accepts. `Base#valid_tenant_name?` raises a `RuntimeError` and not `NotImplementedError`, which is a `ScriptError` that a plain `rescue` does not catch. This follows the shape of upstream v0.9.0. @jamesridgway
 - `tenant_exist?` now answers from the connection pool of the tenant, when there is one, and asks the database only when there is none. The tenant selector calls the method on every request. For SQLite the question is a call to `File.exist?`, but a database server has to be connected to and queried, which is too much work for every request. `create_tenant` no longer makes a connection pool before it migrates the database, so a pool is proof that the database is ready. @jamesridgway
 
 ### Fixed
