@@ -18,6 +18,10 @@ module ActiveRecord
           @config_adapter ||= ActiveRecord::Tenanted::DatabaseAdapter.new(self)
         end
 
+        def untenanted_schema_reflection # :nodoc:
+          @untenanted_schema_reflection ||= yield
+        end
+
         def database_tasks?
           false
         end
