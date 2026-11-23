@@ -36,9 +36,13 @@ module ActiveRecord
           end
       end
 
+      # A new pool is made for each call to `connection_pool`, so the reflection is kept on the
+      # config. Without that, each question to the schema cache reads and parses the dump again.
       def schema_reflection
-        schema_cache_path = ActiveRecord::Tasks::DatabaseTasks.cache_dump_filename(db_config)
-        SchemaReflection.new(schema_cache_path, migrations_paths)
+        db_config.untenanted_schema_reflection do
+          schema_cache_path = ActiveRecord::Tasks::DatabaseTasks.cache_dump_filename(db_config)
+          SchemaReflection.new(schema_cache_path, migrations_paths)
+        end
       end
 
       def migrations_paths
